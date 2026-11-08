@@ -37,3 +37,4 @@ Record for each phase: scope completed, checks run and outcome, known limitation
 | Phase | Verification | Outcome |
 |---|---|---|
 | 1. Foundation and demo | `python -m unittest discover -s tests -v` (9 tests); `python -m compileall -q src tests`; `python -m orbitlink.cli` | PASS. 24 unique satellites; 721 samples over two hours; 16 handovers; 26.21% availability; metrics are measured by the implemented geometric/RF model. Dashboard runtime needs the optional Streamlit/Plotly extras. |
+| 2. Realism | 4 TLE/epoch/checksum/GMST tests; full suite (13 tests); compile check | PARTIAL. TLE checksum, epoch, age screening and explicit TEME→ECEF rotation pass. SGP4 adapter is implemented, but propagation/reference-vector validation is pending: `sgp4` is absent and package-index access is unavailable in this environment. |

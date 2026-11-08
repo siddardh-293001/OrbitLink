@@ -4,16 +4,17 @@ from __future__ import annotations
 
 import math
 
-from orbitlink.core.constants import EARTH_RADIUS_M
+from orbitlink.core.constants import EARTH_FLATTENING, EARTH_RADIUS_M
 from orbitlink.core.models import GroundSite, LookAngle
 
 
 def geodetic_to_ecef(site: GroundSite) -> tuple[float, float, float]:
     lat, lon = math.radians(site.latitude_deg), math.radians(site.longitude_deg)
-    radius = EARTH_RADIUS_M + site.altitude_m
-    return (radius * math.cos(lat) * math.cos(lon),
-            radius * math.cos(lat) * math.sin(lon),
-            radius * math.sin(lat))
+    eccentricity_sq = EARTH_FLATTENING * (2 - EARTH_FLATTENING)
+    prime_vertical = EARTH_RADIUS_M / math.sqrt(1 - eccentricity_sq * math.sin(lat) ** 2)
+    return ((prime_vertical + site.altitude_m) * math.cos(lat) * math.cos(lon),
+            (prime_vertical + site.altitude_m) * math.cos(lat) * math.sin(lon),
+            (prime_vertical * (1 - eccentricity_sq) + site.altitude_m) * math.sin(lat))
 
 
 def look_angle(site: GroundSite, satellite_id: str, satellite_ecef_m: tuple[float, float, float],
