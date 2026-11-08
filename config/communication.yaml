@@ -5,3 +5,14 @@ receive_gain_dbi: 30
 system_noise_temperature_k: 290
 bandwidth_hz: 10000000
 other_losses_db: 2
+advanced_rf:
+  atmospheric_loss_db: 0
+  rain_loss_db: 0
+  pointing_loss_db: 0
+  polarization_loss_db: 0
+  required_snr_db: 0
+  # Losses above are explicit scenario assumptions, not weather predictions.
+optical_link:
+  minimum_range_km: 0
+  maximum_range_km: 5000
+  # Capacity and acquisition constraints require scenario-specific assumptions.
