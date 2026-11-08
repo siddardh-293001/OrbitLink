@@ -3,6 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Protocol
+
+
+class EarthFixedState(Protocol):
+    """Minimum state interface consumed by the shared ground geometry."""
+
+    satellite_id: str
+    position_ecef_m: tuple[float, float, float]
 
 
 @dataclass(frozen=True)
@@ -78,7 +86,9 @@ class SimulationResult:
     serving_delays_ms: list[float | None] = field(default_factory=list)
     serving_snr_db: list[float | None] = field(default_factory=list)
     handovers: list[HandoverEvent] = field(default_factory=list)
-    satellite_states: list[list[SatelliteState]] = field(default_factory=list)
+    satellite_states: list[list[EarthFixedState]] = field(default_factory=list)
+    model_name: str = "Synthetic Keplerian"
+    reference_time_utc: str | None = None
 
     def summary(self) -> dict[str, float | int | None]:
         n = len(self.times_seconds)

@@ -12,7 +12,7 @@ ORBITLINK is a reproducible simulator for how low Earth orbit (LEO) satellite ge
 | 4. Network intelligence | Dynamic graph, routing strategies, queues and packet traffic, predictive handover | Controlled routing, traffic and handover scenarios pass |
 | 5. Research and refinement | Reproducible experiments, statistical summaries, exports, dashboard refinement and validation report | Repeated runs reproduce results and report uncertainty transparently |
 
-Each phase is designed to be verified independently before its milestone is committed. Version 1 values are demonstration assumptions, not official constellation or proprietary hardware specifications. The V1 demo reports geometry and RF link metrics. The later packet model reports throughput and packet loss only from its simulated packets and explicitly assumed link capacities.
+Each phase is designed to be verified independently before its milestone is committed. Version 1 values are demonstration assumptions, not official constellation or proprietary hardware specifications. The V1 demo reports geometry and RF link metrics. The later packet model reports throughput and packet loss only from its simulated packets and explicitly assumed link capacities. Version 2 progress and remaining realism work are tracked in [docs/V2_PROGRESS.md](docs/V2_PROGRESS.md).
 
 ## Quick start
 

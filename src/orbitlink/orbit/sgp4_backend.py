@@ -20,8 +20,17 @@ class SGP4State:
     time_utc: datetime
     position_teme_m: tuple[float, float, float]
     velocity_teme_m_s: tuple[float, float, float]
-    position_ecef_m: tuple[float, float, float]
+    position_pef_m: tuple[float, float, float]
     coordinate_frame: str = "TEME"
+
+    @property
+    def position_ecef_m(self) -> tuple[float, float, float]:
+        """Compatibility alias for the app's GMST-rotated PEF approximation.
+
+        This does not include polar motion, so it should not be treated as a
+        precision ITRF/ECEF solution.
+        """
+        return self.position_pef_m
 
 
 def julian_date(time_utc: datetime) -> float:

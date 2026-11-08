@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import math
 
 
 def _checksum(line: str) -> int:
@@ -58,6 +59,8 @@ class TLERecord:
         return (at_time - self.epoch).total_seconds() / 86400.0
 
     def quality(self, at_time: datetime, *, max_age_days: float = 14.0) -> tuple[str, ...]:
+        if not math.isfinite(max_age_days) or max_age_days < 0:
+            raise ValueError("maximum TLE age must be a finite non-negative number")
         age = self.age_days(at_time)
         issues = []
         if age < 0:
@@ -65,6 +68,45 @@ class TLERecord:
         if age > max_age_days:
             issues.append(f"TLE is stale ({age:.1f} days old; limit {max_age_days:g})")
         return tuple(issues)
+
+
+def parse_tle_catalog(text: str) -> tuple[TLERecord, ...]:
+    """Parse a mixed two-line/three-line TLE catalog such as a CelesTrak file."""
+    lines = [line.strip() for line in text.lstrip("\ufeff").splitlines() if line.strip()]
+    records: list[TLERecord] = []
+    index = 0
+    while index < len(lines):
+        current = lines[index]
+        if current.startswith("#"):
+            index += 1
+            continue
+        name: str | None = None
+        if current.startswith("0 "):
+            name = current[2:].strip()
+            index += 1
+        elif not current.startswith("1 "):
+            name = current
+            index += 1
+        if index + 1 >= len(lines) or not lines[index].startswith("1 ") or not lines[index + 1].startswith("2 "):
+            raise ValueError(f"TLE catalog record {len(records) + 1} must contain a line 1 and line 2")
+        block = "\n".join((name, lines[index], lines[index + 1])) if name else "\n".join(lines[index:index + 2])
+        try:
+            records.append(TLERecord.parse(block))
+        except ValueError as exc:
+            raise ValueError(f"TLE catalog record {len(records) + 1}: {exc}") from exc
+        index += 2
+
+    if not records:
+        raise ValueError("TLE catalog contains no element sets")
+    seen: set[str] = set()
+    duplicates: set[str] = set()
+    for record in records:
+        if record.satellite_id in seen:
+            duplicates.add(record.satellite_id)
+        seen.add(record.satellite_id)
+    if duplicates:
+        raise ValueError(f"TLE catalog contains duplicate satellite IDs: {', '.join(sorted(duplicates))}")
+    return tuple(records)
 
 
 def _as_utc(value: datetime) -> datetime:

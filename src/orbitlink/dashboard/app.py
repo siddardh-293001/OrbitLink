@@ -1,14 +1,16 @@
-"""Interactive V1 dashboard for the ORBITLINK demonstration."""
+"""Interactive ORBITLINK dashboard for synthetic and TLE-driven scenarios."""
 
 from __future__ import annotations
 
 import math
 import random
+import hashlib
+from datetime import datetime, timedelta, timezone
 
 import plotly.graph_objects as go
 import streamlit as st
 
-from orbitlink.analytics.simulator import run_simulation
+from orbitlink.analytics.simulator import run_simulation, run_tle_simulation
 from orbitlink.analytics.experiments import experiment_csv, run_parameter_sweep, summarize_experiment
 from orbitlink.core.constants import EARTH_RADIUS_M, EARTH_ROTATION_RAD_S
 from orbitlink.core.constants import SPEED_OF_LIGHT_M_S
@@ -20,43 +22,133 @@ from orbitlink.network.packet import Packet, simulate_packets
 from orbitlink.network.topology import LinkEdge, NetworkGraph
 from orbitlink.orbit.constellation import generate_constellation
 from orbitlink.orbit.keplerian import orbital_period_seconds, propagate
-
-CONSTELLATION_PLANES = 5
-SATELLITES_PER_PLANE = 8
+from orbitlink.orbit.tle import parse_tle_catalog
 
 st.set_page_config(page_title="ORBITLINK | LEO Simulator", page_icon="🛰️", layout="wide")
 st.title("🛰️ ORBITLINK")
-st.caption("LEO satellite connectivity simulator · Synthetic two-body demonstration scenario")
+st.caption("LEO constellation simulator · compare a configurable synthetic network with uploaded TLE orbits")
 
 with st.sidebar:
-    st.header("Scenario")
+    st.header("Build a scenario")
+    model_mode = st.radio("Orbit source", ["Synthetic demo", "TLE catalog + SGP4"],
+                          help="Synthetic uses a repeatable Walker-style constellation. TLE mode propagates uploaded element sets with SGP4.")
     latitude = st.number_input("Terminal latitude (°)", min_value=-90.0, max_value=90.0, value=37.7749)
     longitude = st.number_input("Terminal longitude (°)", min_value=-180.0, max_value=180.0, value=-122.4194)
     min_elevation = st.slider("Minimum elevation (°)", 5, 60, 25)
     duration_hours = st.slider("Duration (hours)", 0.25, 2.0, 2.0, 0.25)
-    timestep = st.select_slider("Timestep (seconds)", options=[10, 30, 60], value=10)
+    uploaded_catalog = None
+    sim_date, sim_time = datetime.now(timezone.utc).date(), datetime.now(timezone.utc).time().replace(microsecond=0)
+    max_tle_age = 14.0
+    planes, satellites_per_plane, altitude_km, inclination_deg, phase_factor = 5, 8, 550.0, 53.0, 1
+    eccentricity, raan_offset_deg = 0.0, 0.0
+    timestep = 60
+    if model_mode == "Synthetic demo":
+        st.caption("Synthetic Walker-style constellation")
+        timestep = st.select_slider("Sample interval", options=[10, 30, 60], value=10,
+                                    format_func=lambda value: f"{value} seconds")
+        planes = st.slider("Orbital planes", 1, 8, 5)
+        satellites_per_plane = st.slider("Satellites per plane", 2, 12, 8)
+        altitude_km = st.slider("Orbit altitude (km)", 300, 2_000, 550, 50)
+        inclination_deg = st.slider("Inclination (°)", 0, 120, 53)
+        phase_factor = st.slider("Walker phase factor", 0, planes * satellites_per_plane, 1,
+                                  help="Controls how satellites are offset between adjacent planes.")
+        with st.expander("Advanced orbit settings"):
+            eccentricity = st.slider("Eccentricity", 0.0, 0.2, 0.0, 0.005,
+                                     help="Zero is circular. Larger values create elliptical demo orbits.")
+            raan_offset_deg = st.slider("First plane RAAN offset (°)", 0.0, 359.0, 0.0, 1.0)
+    else:
+        uploaded_catalog = st.file_uploader("Upload TLE catalog (.tle or .txt)", type=["tle", "txt"])
+        sim_date = st.date_input("Start date (UTC)", value=sim_date)
+        sim_time = st.time_input("Start time (UTC)", value=sim_time)
+        timestep = st.select_slider("Sample interval", options=[30, 60, 120], value=60,
+                                    format_func=lambda value: f"{value} seconds")
+        max_tle_age = st.number_input("Maximum TLE age (days)", min_value=1.0, max_value=30.0, value=14.0)
     run = st.button("Run simulation", type="primary", use_container_width=True)
 
 site = GroundSite("Dashboard terminal", latitude, longitude)
+tle_records, tle_issues, tle_error = (), (), None
+simulation_start = datetime.combine(sim_date, sim_time).replace(tzinfo=timezone.utc)
+catalog_digest = hashlib.sha256(uploaded_catalog.getvalue()).hexdigest() if uploaded_catalog is not None else None
+requested_config = {
+    "model": model_mode, "latitude": latitude, "longitude": longitude,
+    "minimum_elevation": min_elevation, "duration_hours": duration_hours,
+    "timestep": timestep, "planes": planes, "satellites_per_plane": satellites_per_plane,
+    "altitude_km": altitude_km, "inclination_deg": inclination_deg,
+    "phase_factor": phase_factor, "eccentricity": eccentricity,
+    "raan_offset_deg": raan_offset_deg, "catalog_digest": catalog_digest,
+    "start_time": simulation_start.isoformat(), "max_tle_age": max_tle_age,
+}
+if model_mode == "TLE catalog + SGP4" and uploaded_catalog is not None:
+    try:
+        tle_records = parse_tle_catalog(uploaded_catalog.getvalue().decode("utf-8-sig"))
+        quality_end = simulation_start + timedelta(seconds=int(duration_hours * 3600))
+        tle_issues = [(record.name, issue) for record in tle_records
+                      for sample in (simulation_start, quality_end)
+                      for issue in record.quality(sample, max_age_days=max_tle_age)]
+        st.sidebar.caption(f"Catalog: {len(tle_records)} satellites · max age {max_tle_age:g} days")
+    except (UnicodeDecodeError, ValueError) as exc:
+        tle_error = str(exc)
+        st.sidebar.error(f"Catalog could not be read: {tle_error}")
+if model_mode == "TLE catalog + SGP4":
+    if tle_error:
+        st.error(f"TLE input error: {tle_error}")
+    elif uploaded_catalog is None:
+        st.info("Upload a TLE catalog in the sidebar to configure a real-orbit scenario.")
+    elif tle_issues:
+        st.warning("TLE quality check found issues. Adjust the UTC start time or upload fresher element sets. "
+                   + " · ".join(f"{name}: {issue}" for name, issue in tle_issues[:5]))
+    else:
+        st.success(f"TLE quality check passed for all {len(tle_records)} satellites across the selected run.")
 if "result" not in st.session_state or run:
-    with st.spinner("Propagating constellation and measuring links…"):
-        st.session_state.result = run_simulation(site=site, duration_seconds=int(duration_hours * 3600),
-            timestep_seconds=timestep, minimum_elevation_deg=min_elevation,
-            planes=CONSTELLATION_PLANES, satellites_per_plane=SATELLITES_PER_PLANE)
+    try:
+        with st.spinner("Propagating orbits and measuring links…"):
+            if model_mode == "TLE catalog + SGP4":
+                if not tle_records or tle_issues:
+                    st.error("Resolve the TLE catalog quality checks before running the simulation.")
+                    st.stop()
+                st.session_state.result = run_tle_simulation(
+                    tle_records, site=site, start_time_utc=simulation_start,
+                    duration_seconds=int(duration_hours * 3600), timestep_seconds=timestep,
+                    minimum_elevation_deg=min_elevation, max_age_days=max_tle_age)
+            else:
+                st.session_state.result = run_simulation(site=site, duration_seconds=int(duration_hours * 3600),
+                    timestep_seconds=timestep, minimum_elevation_deg=min_elevation,
+                    planes=planes, satellites_per_plane=satellites_per_plane,
+                    altitude_km=altitude_km, inclination_deg=inclination_deg, phase_factor=phase_factor,
+                    eccentricity=eccentricity, raan_offset_deg=raan_offset_deg)
+            st.session_state.result_config = requested_config
+    except (ValueError, RuntimeError) as exc:
+        st.error(f"Simulation could not run: {exc}")
+        st.stop()
 result = st.session_state.result
 summary = result.summary()
+result_config = st.session_state.get("result_config", requested_config)
+if result_config != requested_config:
+    st.warning("Scenario controls have changed since this result was run. Click **Run simulation** to refresh the charts.")
+display_planes = result_config.get("planes", planes)
+display_satellites_per_plane = result_config.get("satellites_per_plane", satellites_per_plane)
+display_altitude_km = result_config.get("altitude_km", altitude_km)
+display_inclination_deg = result_config.get("inclination_deg", inclination_deg)
+display_phase_factor = result_config.get("phase_factor", phase_factor)
+display_eccentricity = result_config.get("eccentricity", eccentricity)
+display_raan_offset = result_config.get("raan_offset_deg", raan_offset_deg)
+display_site = GroundSite("Last run terminal", result_config.get("latitude", latitude),
+                          result_config.get("longitude", longitude))
+display_min_elevation = result_config.get("minimum_elevation", min_elevation)
+
+st.caption(f"Last run model: **{result.model_name}**" +
+           (f" · Reference time: {result.reference_time_utc}" if result.reference_time_utc else ""))
 
 overview, orbit_tab, ground_tab, communication, handover, analytics, network_tab, experiment_tab = st.tabs(
     ["Overview", "Orbit Viewer", "Ground Track", "Communication", "Handover", "Analytics", "Network", "Experiments"])
 
 with overview:
     metrics = st.columns(4)
-    metrics[0].metric("Constellation", str(len(result.satellite_states[0])),
-                      f"{CONSTELLATION_PLANES} planes × {SATELLITES_PER_PLANE} satellites")
+    metrics[0].metric("Spacecraft", str(len(result.satellite_states[0])), result.model_name)
     metrics[1].metric("Availability", f"{summary['availability_percent']:.1f}%")
     metrics[2].metric("Visible satellites", f"{summary['mean_visible_satellites']:.2f}", "mean per sample")
     metrics[3].metric("Handovers", str(summary["handover_count"]))
-    st.info("Calculated geometry and link metrics are shown. Throughput and packet loss require a traffic model and are not estimated in this phase.")
+    st.info("Availability, visibility, delay, and SNR come from the selected orbit model and geometry. Throughput and packet loss require a traffic model and are not estimated here.")
 
 with orbit_tab:
     st.subheader("Virtual Constellation with Crosslink")
@@ -159,28 +251,42 @@ with orbit_tab:
     # earlier trail used only the finite run window in rotating ECEF coordinates,
     # so its ends could not meet. Build a full inertial revolution, then rotate
     # that orbit into the Earth's fixed frame at the current slider time.
-    elements = generate_constellation(planes=CONSTELLATION_PLANES,
-                                      satellites_per_plane=SATELLITES_PER_PLANE)
-    elements_by_id = {element.satellite_id: element for element in elements}
     simulation_time = result.times_seconds[index]
-    earth_angle = EARTH_ROTATION_RAD_S * simulation_time
-    cos_earth, sin_earth = math.cos(earth_angle), math.sin(earth_angle)
-    orbit_samples = 160
-    for plane in range(1, CONSTELLATION_PLANES + 1):
-        element = elements_by_id[f"P{plane:02d}-S01"]
-        period = orbital_period_seconds(element.semi_major_axis_m)
-        path_x, path_y, path_z = [], [], []
-        for sample_index in range(orbit_samples + 1):
-            orbit_time = simulation_time + period * sample_index / orbit_samples
-            state = propagate(element, orbit_time, earth_rotation=False)
-            x_eci, y_eci, z_eci = state.position_eci_m
-            path_x.append((cos_earth * x_eci + sin_earth * y_eci) / 1000)
-            path_y.append((-sin_earth * x_eci + cos_earth * y_eci) / 1000)
-            path_z.append(z_eci / 1000)
-        fig.add_trace(go.Scatter3d(
-            x=path_x, y=path_y, z=path_z,
-            mode="lines", line={"color": "#7cff52", "width": 2}, opacity=0.48,
-            hoverinfo="skip", showlegend=False, name=f"Plane {plane} orbit"))
+    if result.model_name == "Synthetic Keplerian":
+        elements = generate_constellation(planes=display_planes, satellites_per_plane=display_satellites_per_plane,
+            altitude_km=display_altitude_km, inclination_deg=display_inclination_deg,
+            eccentricity=display_eccentricity, phase_factor=display_phase_factor,
+            raan_offset_deg=display_raan_offset)
+        elements_by_id = {element.satellite_id: element for element in elements}
+        earth_angle = EARTH_ROTATION_RAD_S * simulation_time
+        cos_earth, sin_earth = math.cos(earth_angle), math.sin(earth_angle)
+        orbit_samples = 160
+        for plane in range(1, display_planes + 1):
+            element = elements_by_id[f"P{plane:02d}-S01"]
+            period = orbital_period_seconds(element.semi_major_axis_m)
+            path_x, path_y, path_z = [], [], []
+            for sample_index in range(orbit_samples + 1):
+                orbit_time = simulation_time + period * sample_index / orbit_samples
+                state = propagate(element, orbit_time, earth_rotation=False)
+                x_eci, y_eci, z_eci = state.position_eci_m
+                path_x.append((cos_earth * x_eci + sin_earth * y_eci) / 1000)
+                path_y.append((-sin_earth * x_eci + cos_earth * y_eci) / 1000)
+                path_z.append(z_eci / 1000)
+            fig.add_trace(go.Scatter3d(x=path_x, y=path_y, z=path_z,
+                mode="lines", line={"color": "#7cff52", "width": 2}, opacity=0.48,
+                hoverinfo="skip", showlegend=False, name=f"Plane {plane} orbit"))
+    else:
+        # TLE-mode trails use the actual SGP4 samples in this run, so the
+        # visualization never invents a synthetic orbit for real catalog data.
+        tracked_ids = [state.satellite_id for state in states[:min(8, len(states))]]
+        for satellite_id in tracked_ids:
+            path = [next((item for item in snapshot if item.satellite_id == satellite_id), None)
+                    for snapshot in result.satellite_states]
+            path = [item for item in path if item is not None]
+            fig.add_trace(go.Scatter3d(x=[p.position_ecef_m[0] / 1000 for p in path],
+                y=[p.position_ecef_m[1] / 1000 for p in path], z=[p.position_ecef_m[2] / 1000 for p in path],
+                mode="lines", line={"color": "#7cff52", "width": 2}, opacity=0.48,
+                hoverinfo="skip", showlegend=False, name=f"{satellite_id} sampled path"))
 
     # Draw only links the geometry model says have line of sight and fit its
     # 5,000 km optical link range, matching the network view's link assumptions.
@@ -208,9 +314,14 @@ with orbit_tab:
     minutes, seconds = divmod(remainder, 60)
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Spacecraft", len(states))
-    m2.metric("Orbital planes", CONSTELLATION_PLANES)
+    m2.metric("Orbital planes", str(display_planes) if result.model_name == "Synthetic Keplerian" else "Catalog")
     m3.metric("Optical crosslinks", len(crosslink_x) // 3)
-    m4.metric("Simulation time", f"{hours:02d}:{minutes:02d}:{seconds:02d} UTC")
+    if result.model_name == "TLE + SGP4" and result.reference_time_utc:
+        actual_time = datetime.fromisoformat(result.reference_time_utc) + timedelta(seconds=sim_time)
+        simulation_label = actual_time.strftime("%Y-%m-%d %H:%M:%S UTC")
+    else:
+        simulation_label = f"{hours:02d}:{minutes:02d}:{seconds:02d} elapsed"
+    m4.metric("Simulation time", simulation_label)
     fig.update_layout(
         height=720, margin={"l": 0, "r": 0, "t": 0, "b": 0},
         paper_bgcolor="#03070d", plot_bgcolor="#03070d",
@@ -225,19 +336,19 @@ with orbit_tab:
         showlegend=False,
     )
     st.plotly_chart(fig, use_container_width=True)
+    if result.model_name == "TLE + SGP4":
+        st.caption("TLE states are propagated in TEME. Ground geometry uses a GMST-rotated PEF approximation (UTC≈UT1, no polar-motion correction); green paths show the sampled run window.")
 
 with ground_tab:
     fig = go.Figure()
-    ground_elements = {element.satellite_id: element for element in elements}
-    for sat_id in ["P01-S01", "P02-S01", "P03-S01", "P04-S01", "P05-S01", "P01-S05"]:
-        element = ground_elements[sat_id]
-        latitudes, longitudes = [], []
-        for t in range(0, int(duration_hours * 3600) + 1, max(timestep, 30)):
-            x, y, z = propagate(element, t).position_ecef_m
-            latitudes.append(math.degrees(math.atan2(z, math.hypot(x, y))))
-            longitudes.append(math.degrees(math.atan2(y, x)))
+    track_ids = [state.satellite_id for state in result.satellite_states[0][:min(8, len(result.satellite_states[0]))]]
+    for sat_id in track_ids:
+        positions = [next(item.position_ecef_m for item in snapshot if item.satellite_id == sat_id)
+                     for snapshot in result.satellite_states]
+        latitudes = [math.degrees(math.atan2(z, math.hypot(x, y))) for x, y, z in positions]
+        longitudes = [math.degrees(math.atan2(y, x)) for x, y, _ in positions]
         fig.add_trace(go.Scatter(x=longitudes, y=latitudes, mode="lines", name=sat_id))
-    fig.add_trace(go.Scatter(x=[longitude], y=[latitude], mode="markers", marker={"size": 12, "color": "red"}, name="Terminal"))
+    fig.add_trace(go.Scatter(x=[result_config.get("longitude", longitude)], y=[result_config.get("latitude", latitude)], mode="markers", marker={"size": 12, "color": "red"}, name="Terminal"))
     fig.update_layout(xaxis_title="Longitude (°)", yaxis_title="Latitude (°)", height=520,
                       xaxis={"range": [-180, 180]}, yaxis={"range": [-90, 90]})
     st.plotly_chart(fig, use_container_width=True)
@@ -265,15 +376,15 @@ with analytics:
         f"{t},{count},{serving or ''},{elev or ''},{delay or ''},{snr or ''}"
         for t, count, serving, elev, delay, snr in zip(result.times_seconds, result.visible_counts,
             result.serving_satellite_ids, result.serving_elevations_deg, result.serving_delays_ms, result.serving_snr_db))
-    st.download_button("Download measurements (CSV)", csv, "orbitlink-v1-metrics.csv", "text/csv")
+    st.download_button("Download measurements (CSV)", csv, "orbitlink-v2-metrics.csv", "text/csv")
 
 with network_tab:
     st.caption("Connectivity is rebuilt from geometry at the selected orbit sample. Packet capacity is an explicit scenario assumption.")
     capacity_mbps = st.number_input("Per-link packet capacity assumption (Mbps)", min_value=1.0, max_value=100000.0, value=50.0, step=1.0)
     gateway = GroundSite("Demo gateway", 34.0522, -118.2437)
     states = result.satellite_states[index]
-    terminal_links = visible_satellites(site, states, min_elevation)
-    gateway_links = visible_satellites(gateway, states, min_elevation)
+    terminal_links = visible_satellites(display_site, states, display_min_elevation)
+    gateway_links = visible_satellites(gateway, states, display_min_elevation)
     graph = NetworkGraph(nodes={"terminal", "gateway"})
     capacity_bps = capacity_mbps * 1_000_000
     for view in terminal_links:
@@ -311,7 +422,7 @@ with network_tab:
     else:
         st.warning("No path connects the terminal and gateway at this simulation time.")
     points = {state.satellite_id: tuple(value / 1000 for value in state.position_ecef_m) for state in states}
-    points["terminal"] = tuple(value / 1000 for value in geodetic_to_ecef(site))
+    points["terminal"] = tuple(value / 1000 for value in geodetic_to_ecef(display_site))
     points["gateway"] = tuple(value / 1000 for value in geodetic_to_ecef(gateway))
     network_fig = go.Figure()
     for edge_list in graph.edges.values():

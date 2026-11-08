@@ -30,6 +30,23 @@ class OrbitTests(unittest.TestCase):
         final = propagate(element, period, earth_rotation=False).position_eci_m
         self.assertLess(math.dist(initial, final), 1e-3)
 
+    def test_configurable_walker_planes_and_ellipticity(self):
+        constellation = generate_constellation(planes=3, satellites_per_plane=4,
+            altitude_km=700, inclination_deg=65, eccentricity=0.1,
+            phase_factor=3, raan_offset_deg=45)
+        self.assertEqual(len(constellation), 12)
+        self.assertAlmostEqual(constellation[0].raan_rad, math.radians(45))
+        self.assertAlmostEqual(constellation[4].raan_rad, math.radians(165))
+        self.assertAlmostEqual(constellation[0].eccentricity, 0.1)
+        self.assertAlmostEqual(constellation[4].mean_anomaly_epoch_rad - constellation[0].mean_anomaly_epoch_rad,
+                               2 * math.pi * 3 / 12)
+
+    def test_constellation_rejects_nonphysical_elements(self):
+        with self.assertRaisesRegex(ValueError, "eccentricity"):
+            generate_constellation(eccentricity=1.0)
+        with self.assertRaisesRegex(ValueError, "inclination"):
+            generate_constellation(inclination_deg=181)
+
 
 if __name__ == "__main__":
     unittest.main()
