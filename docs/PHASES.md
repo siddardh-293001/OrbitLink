@@ -45,4 +45,6 @@ Record for each phase: scope completed, checks run and outcome, known limitation
 ## Remaining environment checks
 
 - Phase 2 remains partial until the optional SGP4 dependency can be installed and checked against a trusted propagation reference vector.
-- The GitHub create-repository UI stayed blank, the connected GitHub integration does not expose repository creation, and the local GitHub CLI is not authenticated. The five local milestone commits are ready; remote publication awaits a writable repository connection.
+- The dashboard source compiles, but a live UI smoke test remains once the optional Streamlit and Plotly dependencies are installed.
+- The repository has been created as private at `https://github.com/siddardh-293001/OrbitLink`. The local `main` branch tracks `origin/main`, and all five phase commits are present remotely.
+- The final project report and demonstration recording from the original deliverables list have not been produced.
