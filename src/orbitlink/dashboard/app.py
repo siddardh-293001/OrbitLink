@@ -10,7 +10,7 @@ import streamlit as st
 
 from orbitlink.analytics.simulator import run_simulation
 from orbitlink.analytics.experiments import experiment_csv, run_parameter_sweep, summarize_experiment
-from orbitlink.core.constants import EARTH_RADIUS_M
+from orbitlink.core.constants import EARTH_RADIUS_M, EARTH_ROTATION_RAD_S
 from orbitlink.core.constants import SPEED_OF_LIGHT_M_S
 from orbitlink.core.models import GroundSite
 from orbitlink.communication.laser_link import optical_link
@@ -19,7 +19,10 @@ from orbitlink.geometry.visibility import visible_satellites
 from orbitlink.network.packet import Packet, simulate_packets
 from orbitlink.network.topology import LinkEdge, NetworkGraph
 from orbitlink.orbit.constellation import generate_constellation
-from orbitlink.orbit.keplerian import propagate
+from orbitlink.orbit.keplerian import orbital_period_seconds, propagate
+
+CONSTELLATION_PLANES = 5
+SATELLITES_PER_PLANE = 8
 
 st.set_page_config(page_title="ORBITLINK | LEO Simulator", page_icon="🛰️", layout="wide")
 st.title("🛰️ ORBITLINK")
@@ -38,7 +41,8 @@ site = GroundSite("Dashboard terminal", latitude, longitude)
 if "result" not in st.session_state or run:
     with st.spinner("Propagating constellation and measuring links…"):
         st.session_state.result = run_simulation(site=site, duration_seconds=int(duration_hours * 3600),
-            timestep_seconds=timestep, minimum_elevation_deg=min_elevation)
+            timestep_seconds=timestep, minimum_elevation_deg=min_elevation,
+            planes=CONSTELLATION_PLANES, satellites_per_plane=SATELLITES_PER_PLANE)
 result = st.session_state.result
 summary = result.summary()
 
@@ -47,7 +51,8 @@ overview, orbit_tab, ground_tab, communication, handover, analytics, network_tab
 
 with overview:
     metrics = st.columns(4)
-    metrics[0].metric("Constellation", "24", "3 planes × 8 satellites")
+    metrics[0].metric("Constellation", str(len(result.satellite_states[0])),
+                      f"{CONSTELLATION_PLANES} planes × {SATELLITES_PER_PLANE} satellites")
     metrics[1].metric("Availability", f"{summary['availability_percent']:.1f}%")
     metrics[2].metric("Visible satellites", f"{summary['mean_visible_satellites']:.2f}", "mean per sample")
     metrics[3].metric("Handovers", str(summary["handover_count"]))
@@ -150,16 +155,30 @@ with orbit_tab:
     fig.add_trace(go.Surface(x=atmosphere_x, y=atmosphere_y, z=atmosphere_z,
         colorscale=[[0, "#3b9dff"], [1, "#8fcaff"]], showscale=False, opacity=0.10,
         hoverinfo="skip", name="Atmosphere"))
-    # Show one full orbital trail for each plane, sampled from the simulation.
-    path_stride = max(1, len(result.satellite_states) // 180)
-    for plane in range(1, 4):
-        satellite_id = f"P{plane:02d}-S01"
-        path_states = [next(s for s in sample if s.satellite_id == satellite_id)
-                       for sample in result.satellite_states[::path_stride]]
+    # Draw each complete orbital plane at the selected simulation instant. The
+    # earlier trail used only the finite run window in rotating ECEF coordinates,
+    # so its ends could not meet. Build a full inertial revolution, then rotate
+    # that orbit into the Earth's fixed frame at the current slider time.
+    elements = generate_constellation(planes=CONSTELLATION_PLANES,
+                                      satellites_per_plane=SATELLITES_PER_PLANE)
+    elements_by_id = {element.satellite_id: element for element in elements}
+    simulation_time = result.times_seconds[index]
+    earth_angle = EARTH_ROTATION_RAD_S * simulation_time
+    cos_earth, sin_earth = math.cos(earth_angle), math.sin(earth_angle)
+    orbit_samples = 160
+    for plane in range(1, CONSTELLATION_PLANES + 1):
+        element = elements_by_id[f"P{plane:02d}-S01"]
+        period = orbital_period_seconds(element.semi_major_axis_m)
+        path_x, path_y, path_z = [], [], []
+        for sample_index in range(orbit_samples + 1):
+            orbit_time = simulation_time + period * sample_index / orbit_samples
+            state = propagate(element, orbit_time, earth_rotation=False)
+            x_eci, y_eci, z_eci = state.position_eci_m
+            path_x.append((cos_earth * x_eci + sin_earth * y_eci) / 1000)
+            path_y.append((-sin_earth * x_eci + cos_earth * y_eci) / 1000)
+            path_z.append(z_eci / 1000)
         fig.add_trace(go.Scatter3d(
-            x=[s.position_ecef_m[0] / 1000 for s in path_states],
-            y=[s.position_ecef_m[1] / 1000 for s in path_states],
-            z=[s.position_ecef_m[2] / 1000 for s in path_states],
+            x=path_x, y=path_y, z=path_z,
             mode="lines", line={"color": "#7cff52", "width": 2}, opacity=0.48,
             hoverinfo="skip", showlegend=False, name=f"Plane {plane} orbit"))
 
@@ -187,10 +206,11 @@ with orbit_tab:
     sim_time = int(result.times_seconds[index])
     hours, remainder = divmod(sim_time, 3600)
     minutes, seconds = divmod(remainder, 60)
-    m1, m2, m3 = st.columns(3)
+    m1, m2, m3, m4 = st.columns(4)
     m1.metric("Spacecraft", len(states))
-    m2.metric("Optical crosslinks", len(crosslink_x) // 3)
-    m3.metric("Simulation time", f"{hours:02d}:{minutes:02d}:{seconds:02d} UTC")
+    m2.metric("Orbital planes", CONSTELLATION_PLANES)
+    m3.metric("Optical crosslinks", len(crosslink_x) // 3)
+    m4.metric("Simulation time", f"{hours:02d}:{minutes:02d}:{seconds:02d} UTC")
     fig.update_layout(
         height=720, margin={"l": 0, "r": 0, "t": 0, "b": 0},
         paper_bgcolor="#03070d", plot_bgcolor="#03070d",
@@ -208,8 +228,9 @@ with orbit_tab:
 
 with ground_tab:
     fig = go.Figure()
-    for sat_id in ["P01-S01", "P02-S01", "P03-S01", "P01-S05"]:
-        element = next(x for x in generate_constellation() if x.satellite_id == sat_id)
+    ground_elements = {element.satellite_id: element for element in elements}
+    for sat_id in ["P01-S01", "P02-S01", "P03-S01", "P04-S01", "P05-S01", "P01-S05"]:
+        element = ground_elements[sat_id]
         latitudes, longitudes = [], []
         for t in range(0, int(duration_hours * 3600) + 1, max(timestep, 30)):
             x, y, z = propagate(element, t).position_ecef_m

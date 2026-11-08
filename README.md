@@ -6,7 +6,7 @@ ORBITLINK is a reproducible simulator for how low Earth orbit (LEO) satellite ge
 
 | Phase | Scope | Exit check |
 |---|---|---|
-| 1. Foundation and demo | Core models, 24-satellite Keplerian constellation, visibility, RF link budget, satellite selection, handover, analytics, Streamlit dashboard | Numerical checks pass; 24 unique satellites; two-hour run produces measured coverage and handover metrics |
+| 1. Foundation and demo | Core models, configurable Keplerian constellation, visibility, RF link budget, satellite selection, handover, analytics, Streamlit dashboard | Numerical checks pass; the library defaults to 24 satellites and the dashboard shows 40 satellites across 5 planes; two-hour run produces measured coverage and handover metrics |
 | 2. Realism | TLE ingestion, SGP4/TEME transforms, configurable Walker constellations and coordinate validation | Propagation comparisons and epoch/data-quality checks pass |
 | 3. Communications | Extended RF, optical line-of-sight links and dynamic link eligibility | Hand-calculated RF references and optical visibility scenarios pass |
 | 4. Network intelligence | Dynamic graph, routing strategies, queues and packet traffic, predictive handover | Controlled routing, traffic and handover scenarios pass |
