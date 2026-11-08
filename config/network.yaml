@@ -1,0 +1,9 @@
+handover_hysteresis_deg: 5
+ground_terminal:
+  name: "Demo terminal"
+  latitude_deg: 37.7749
+  longitude_deg: -122.4194
+gateway:
+  name: "Demo gateway"
+  latitude_deg: 34.0522
+  longitude_deg: -118.2437

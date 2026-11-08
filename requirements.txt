@@ -1,0 +1,8 @@
+streamlit>=1.35
+plotly>=5.22
+sgp4>=2.23
+skyfield>=1.48
+networkx>=3.3
+simpy>=4.1
+numpy>=1.26
+pandas>=2.2

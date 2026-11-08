@@ -1,0 +1,8 @@
+name: "ORBITLINK demonstration"
+altitude_km: 550
+inclination_deg: 53
+eccentricity: 0
+planes: 3
+satellites_per_plane: 8
+phase_factor: 1
+raan_offset_deg: 0

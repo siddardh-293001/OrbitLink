@@ -1,0 +1,7 @@
+frequency_ghz: 12
+transmit_power_dbw: 10
+transmit_gain_dbi: 30
+receive_gain_dbi: 30
+system_noise_temperature_k: 290
+bandwidth_hz: 10000000
+other_losses_db: 2

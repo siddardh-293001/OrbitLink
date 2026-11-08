@@ -1,0 +1,5 @@
+start_utc: "2026-01-01T00:00:00Z"
+duration_seconds: 7200
+timestep_seconds: 10
+minimum_elevation_deg: 25
+earth_rotation: true
