@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import random
 
 import plotly.graph_objects as go
 import streamlit as st
@@ -53,6 +54,7 @@ with overview:
     st.info("Calculated geometry and link metrics are shown. Throughput and packet loss require a traffic model and are not estimated in this phase.")
 
 with orbit_tab:
+    st.subheader("Virtual Constellation with Crosslink")
     index = st.slider("Simulation sample", 0, len(result.times_seconds) - 1, min(0, len(result.times_seconds) - 1))
     states = result.satellite_states[index]
     # Build a higher-resolution Earth surface and shade land, ocean, relief, and
@@ -126,6 +128,20 @@ with orbit_tab:
                                cmin=0, cmax=1, colorscale=earth_scale, showscale=False,
                                lighting={"ambient": 0.38, "diffuse": 0.92, "specular": 0.12, "roughness": 0.82},
                                lightposition={"x": 1200, "y": 900, "z": 1400}, name="Earth"))
+    # A fixed star field gives the globe the deep-space setting from the reference.
+    star_rng = random.Random(42)
+    star_positions = [[], [], []]
+    for _ in range(650):
+        z_unit = star_rng.uniform(-1, 1)
+        angle = star_rng.uniform(0, 2 * math.pi)
+        radius = 12_500
+        planar = math.sqrt(1 - z_unit * z_unit)
+        star_positions[0].append(radius * planar * math.cos(angle))
+        star_positions[1].append(radius * planar * math.sin(angle))
+        star_positions[2].append(radius * z_unit)
+    fig.add_trace(go.Scatter3d(x=star_positions[0], y=star_positions[1], z=star_positions[2],
+        mode="markers", marker={"size": 1.3, "color": "#b8c7d9", "opacity": 0.72},
+        hoverinfo="skip", showlegend=False, name="Stars"))
     # Soft atmospheric rim around the planet.
     atmosphere_radius = EARTH_RADIUS_M * 1.012 / 1000
     atmosphere_x = [[atmosphere_radius * math.cos(math.pi * (i / u - 0.5)) * math.cos(2 * math.pi * j / v) for j in range(v + 1)] for i in range(u + 1)]
@@ -134,10 +150,60 @@ with orbit_tab:
     fig.add_trace(go.Surface(x=atmosphere_x, y=atmosphere_y, z=atmosphere_z,
         colorscale=[[0, "#3b9dff"], [1, "#8fcaff"]], showscale=False, opacity=0.10,
         hoverinfo="skip", name="Atmosphere"))
+    # Show one full orbital trail for each plane, sampled from the simulation.
+    path_stride = max(1, len(result.satellite_states) // 180)
+    for plane in range(1, 4):
+        satellite_id = f"P{plane:02d}-S01"
+        path_states = [next(s for s in sample if s.satellite_id == satellite_id)
+                       for sample in result.satellite_states[::path_stride]]
+        fig.add_trace(go.Scatter3d(
+            x=[s.position_ecef_m[0] / 1000 for s in path_states],
+            y=[s.position_ecef_m[1] / 1000 for s in path_states],
+            z=[s.position_ecef_m[2] / 1000 for s in path_states],
+            mode="lines", line={"color": "#7cff52", "width": 2}, opacity=0.48,
+            hoverinfo="skip", showlegend=False, name=f"Plane {plane} orbit"))
+
+    # Draw only links the geometry model says have line of sight and fit its
+    # 5,000 km optical link range, matching the network view's link assumptions.
+    crosslink_x, crosslink_y, crosslink_z = [], [], []
+    for left_index, left in enumerate(states):
+        for right in states[left_index + 1:]:
+            link = optical_link(left.position_ecef_m, right.position_ecef_m, maximum_range_m=5_000_000)
+            if link.available:
+                crosslink_x.extend([left.position_ecef_m[0] / 1000, right.position_ecef_m[0] / 1000, None])
+                crosslink_y.extend([left.position_ecef_m[1] / 1000, right.position_ecef_m[1] / 1000, None])
+                crosslink_z.extend([left.position_ecef_m[2] / 1000, right.position_ecef_m[2] / 1000, None])
+    fig.add_trace(go.Scatter3d(x=crosslink_x, y=crosslink_y, z=crosslink_z,
+        mode="lines", line={"color": "#a5ff43", "width": 2}, opacity=0.76,
+        hoverinfo="skip", showlegend=False, name="Optical crosslinks"))
+
+    # Satellite markers stay bright and identifiable against the space backdrop.
     fig.add_trace(go.Scatter3d(x=[s.position_ecef_m[0]/1000 for s in states],
         y=[s.position_ecef_m[1]/1000 for s in states], z=[s.position_ecef_m[2]/1000 for s in states],
-        mode="markers", marker={"size": 4, "color": "#ffcc66"}, text=[s.satellite_id for s in states], name="Satellites"))
-    fig.update_layout(height=650, margin={"l": 0, "r": 0, "t": 20, "b": 0}, scene={"aspectmode": "data"})
+        mode="markers+text", marker={"size": 4.5, "color": "#e5eaf0", "line": {"color": "#89ff43", "width": 1}},
+        text=[s.satellite_id for s in states], textposition="top center",
+        textfont={"size": 8, "color": "#a5ff43"}, customdata=[s.satellite_id for s in states],
+        hovertemplate="%{customdata}<extra>Satellite</extra>", name="Satellites"))
+    sim_time = int(result.times_seconds[index])
+    hours, remainder = divmod(sim_time, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Spacecraft", len(states))
+    m2.metric("Optical crosslinks", len(crosslink_x) // 3)
+    m3.metric("Simulation time", f"{hours:02d}:{minutes:02d}:{seconds:02d} UTC")
+    fig.update_layout(
+        height=720, margin={"l": 0, "r": 0, "t": 0, "b": 0},
+        paper_bgcolor="#03070d", plot_bgcolor="#03070d",
+        scene={
+            "aspectmode": "cube",
+            "bgcolor": "#03070d",
+            "xaxis": {"visible": False, "range": [-12_500, 12_500]},
+            "yaxis": {"visible": False, "range": [-12_500, 12_500]},
+            "zaxis": {"visible": False, "range": [-12_500, 12_500]},
+            "camera": {"eye": {"x": 1.65, "y": 1.65, "z": 1.1}, "projection": {"type": "orthographic"}},
+        },
+        showlegend=False,
+    )
     st.plotly_chart(fig, use_container_width=True)
 
 with ground_tab:
