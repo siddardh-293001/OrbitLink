@@ -24,7 +24,9 @@ python -m unittest discover -s tests -v
 streamlit run src/orbitlink/dashboard/app.py
 ```
 
-Run the deterministic simulation summary with `python -m orbitlink.cli` (after `pip install -e .`). See `config/` for scenario settings and `docs/PHASES.md` for detailed milestones.
+Run the deterministic simulation summary with `python -m orbitlink.cli` (after `pip install -e .`). See [docs/PHASES.md](docs/PHASES.md) for detailed milestones and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the module map.
+
+Run an experiment sweep, for example `orbitlink-experiment altitude_km 450,550,650 --repetitions 3 --duration-seconds 3600`. The dashboard also exposes route and packet scenarios and can export raw experiment runs as CSV. Packet throughput depends on the link-capacity assumption shown in the scenario controls.
 
 ## Architecture
 

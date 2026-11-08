@@ -40,3 +40,9 @@ Record for each phase: scope completed, checks run and outcome, known limitation
 | 2. Realism | 4 TLE/epoch/checksum/GMST tests; full suite (13 tests); compile check | PARTIAL. TLE checksum, epoch, age screening and explicit TEME→ECEF rotation pass. SGP4 adapter is implemented, but propagation/reference-vector validation is pending: `sgp4` is absent and package-index access is unavailable in this environment. |
 | 3. Communications | 3 advanced RF/optical checks; full suite (16 tests); compile and whitespace checks | PASS. Loss inputs and Doppler are reflected in SNR/margin; Shannon capacity is labeled as an idealized upper bound. Optical visibility rejects Earth occultation and reports propagation delay. |
 | 4. Network intelligence | 4 graph/route/packet/selection checks; full suite (20 tests); compile and whitespace checks | PASS. Route costs are strategy-selectable, unavailable links are excluded, packet outcomes are accounted for, queues add serialization delay, and predictive/signal handover scoring is available. |
+| 5. Research and refinement | 3 statistics/experiment checks; full suite (23 tests); compile, two-scenario sweep smoke run, and whitespace checks | PASS. Parameter sweeps are repeatable, raw runs export to CSV, percentiles and sample variability are reported, and confidence intervals are omitted for one-run or zero-variation samples. Dashboard runtime still needs the optional Streamlit/Plotly packages. |
+
+## Remaining environment checks
+
+- Phase 2 remains partial until the optional SGP4 dependency can be installed and checked against a trusted propagation reference vector.
+- The GitHub create-repository UI stayed blank, the connected GitHub integration does not expose repository creation, and the local GitHub CLI is not authenticated. The five local milestone commits are ready; remote publication awaits a writable repository connection.

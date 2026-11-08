@@ -25,7 +25,8 @@ class SGP4State:
 
 
 def julian_date(time_utc: datetime) -> float:
-    value = time_utc.astimezone(timezone.utc)
+    value = (time_utc.replace(tzinfo=timezone.utc) if time_utc.tzinfo is None
+             else time_utc.astimezone(timezone.utc))
     year, month = value.year, value.month
     day = value.day + (value.hour + (value.minute + (value.second + value.microsecond / 1e6) / 60) / 60) / 24
     if month <= 2:
