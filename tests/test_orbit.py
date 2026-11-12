@@ -7,6 +7,17 @@ from orbitlink.orbit.keplerian import orbital_period_seconds, propagate, solve_k
 
 
 class OrbitTests(unittest.TestCase):
+    def test_mixed_planes_and_surface_intersection(self):
+        elements = generate_constellation(planes=2, satellites_per_plane=2,
+            plane_altitudes_km=[550, 1200], plane_inclinations_deg=[53, 98])
+        self.assertEqual(elements[0].semi_major_axis_m, EARTH_RADIUS_M + 550000)
+        self.assertEqual(elements[2].semi_major_axis_m, EARTH_RADIUS_M + 1200000)
+        self.assertAlmostEqual(elements[2].inclination_rad, math.radians(98))
+        with self.assertRaisesRegex(ValueError, "perigee"):
+            generate_constellation(altitude_km=550, eccentricity=0.2)
+        with self.assertRaisesRegex(ValueError, "exactly one"):
+            generate_constellation(planes=2, plane_altitudes_km=[550])
+
     def test_kepler_solver_residual(self):
         for mean, eccentricity in [(0.1, 0.0), (2.4, 0.3), (5.9, 0.7)]:
             eccentric = solve_kepler(mean, eccentricity)
@@ -32,7 +43,7 @@ class OrbitTests(unittest.TestCase):
 
     def test_configurable_walker_planes_and_ellipticity(self):
         constellation = generate_constellation(planes=3, satellites_per_plane=4,
-            altitude_km=700, inclination_deg=65, eccentricity=0.1,
+            altitude_km=1000, inclination_deg=65, eccentricity=0.1,
             phase_factor=3, raan_offset_deg=45)
         self.assertEqual(len(constellation), 12)
         self.assertAlmostEqual(constellation[0].raan_rad, math.radians(45))

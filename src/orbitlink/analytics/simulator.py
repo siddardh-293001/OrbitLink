@@ -17,14 +17,18 @@ def run_simulation(*, site: GroundSite | None = None, duration_seconds: int = 72
                    hysteresis_deg: float = 5, planes: int = 3, satellites_per_plane: int = 8,
                    altitude_km: float = 550, inclination_deg: float = 53,
                    earth_rotation: bool = True, eccentricity: float = 0,
-                   phase_factor: int = 1, raan_offset_deg: float = 0) -> SimulationResult:
+                   phase_factor: int = 1, raan_offset_deg: float = 0,
+                   plane_altitudes_km: list[float] | None = None,
+                   plane_inclinations_deg: list[float] | None = None) -> SimulationResult:
     if duration_seconds < 0 or timestep_seconds <= 0:
         raise ValueError("duration must be non-negative and timestep must be positive")
     site = site or GroundSite("Demo terminal", 37.7749, -122.4194)
     elements = generate_constellation(planes=planes, satellites_per_plane=satellites_per_plane,
                                       altitude_km=altitude_km, inclination_deg=inclination_deg,
                                       eccentricity=eccentricity, phase_factor=phase_factor,
-                                      raan_offset_deg=raan_offset_deg)
+                                      raan_offset_deg=raan_offset_deg,
+                                      plane_altitudes_km=plane_altitudes_km,
+                                      plane_inclinations_deg=plane_inclinations_deg)
     manager = HandoverManager(hysteresis_deg, minimum_elevation_deg)
     result = SimulationResult(model_name="Synthetic Keplerian")
     for t in range(0, duration_seconds + 1, timestep_seconds):
