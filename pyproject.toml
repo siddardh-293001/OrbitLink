@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.optional-dependencies]
-dashboard = ["streamlit>=1.35", "plotly>=5.22"]
+dashboard = ["streamlit>=1.35", "plotly>=5.22", "pillow>=10"]
 full = ["sgp4>=2.23", "skyfield>=1.48", "networkx>=3.3", "simpy>=4.1", "numpy>=1.26", "pandas>=2.2", "streamlit>=1.35", "plotly>=5.22"]
 dev = ["pytest>=8.2"]
 
@@ -24,3 +24,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.setuptools.package-data]
+"orbitlink.dashboard" = ["assets/*.jpg", "assets/*.md"]

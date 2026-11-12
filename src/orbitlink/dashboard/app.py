@@ -5,6 +5,8 @@ from __future__ import annotations
 import math
 import random
 import hashlib
+from pathlib import Path
+from PIL import Image
 from datetime import datetime, timedelta, timezone
 
 import plotly.graph_objects as go
@@ -169,73 +171,19 @@ with orbit_tab:
     states = result.satellite_states[index]
     # Build a higher-resolution Earth surface and shade land, ocean, relief, and
     # polar ice separately so the orbital view reads as a planet, not a plain ball.
-    u, v = 72, 144
-    sphere_x, sphere_y, sphere_z = [], [], []
-    earth_colors = []
-    landmasses = [
-        [(-168, 64), (-157, 72), (-143, 70), (-133, 58), (-124, 50), (-117, 33), (-108, 23), (-98, 18), (-91, 20), (-84, 26), (-81, 33), (-75, 41), (-66, 46), (-59, 52), (-67, 59), (-80, 62), (-91, 69), (-108, 72), (-125, 70), (-143, 72), (-157, 69)],
-        [(-52, 60), (-43, 61), (-34, 70), (-40, 81), (-54, 84), (-62, 78), (-59, 68)],
-        [(-81, 12), (-70, 10), (-61, 4), (-50, 1), (-45, -8), (-39, -14), (-43, -23), (-49, -31), (-54, -42), (-64, -55), (-71, -48), (-74, -31), (-78, -13)],
-        [(-11, 36), (-17, 30), (-17, 19), (-12, 9), (-16, 1), (-8, -5), (3, -5), (10, -14), (19, -34), (29, -34), (35, -24), (42, -11), (50, 1), (43, 12), (50, 17), (42, 30), (32, 32), (28, 37), (17, 36), (9, 42), (-1, 36)],
-        [(-11, 36), (-10, 44), (-5, 49), (2, 51), (9, 55), (18, 55), (25, 60), (34, 58), (40, 52), (50, 55), (58, 61), (72, 66), (88, 70), (103, 68), (116, 62), (128, 55), (140, 51), (153, 58), (166, 61), (177, 53), (169, 44), (158, 39), (146, 42), (135, 35), (127, 31), (121, 23), (113, 18), (108, 8), (100, 4), (96, 14), (87, 21), (80, 8), (77, 7), (74, 18), (69, 25), (62, 26), (56, 25), (51, 29), (45, 24), (42, 16), (35, 33), (27, 37), (18, 36), (9, 42), (1, 41), (-6, 37)],
-        [(112, -11), (123, -10), (132, -12), (141, -17), (153, -25), (151, -36), (140, -39), (130, -35), (119, -32), (114, -24)],
-        [(47, -13), (50, -16), (49, -25), (46, -26), (44, -18)],
-        [(129, 31), (136, 34), (142, 42), (145, 44), (140, 36)],
-        [(-180, -68), (-150, -72), (-120, -70), (-90, -74), (-60, -70), (-30, -73), (0, -69), (30, -73), (60, -70), (90, -74), (120, -70), (150, -72), (180, -68), (180, -90), (-180, -90)],
-    ]
-
-    def on_land(longitude_deg: float, latitude_deg: float) -> bool:
-        for polygon in landmasses:
-            inside = False
-            previous = polygon[-1]
-            for current in polygon:
-                x1, y1 = previous
-                x2, y2 = current
-                if (y1 > latitude_deg) != (y2 > latitude_deg):
-                    crossing = (x2 - x1) * (latitude_deg - y1) / (y2 - y1) + x1
-                    if longitude_deg < crossing:
-                        inside = not inside
-                previous = current
-            if inside:
-                return True
-        return False
-
+    u, v = 128, 256
+    texture = Image.open(Path(__file__).parent / "assets" / "earth.jpg").convert("RGB").resize((v, u)).quantize(colors=256)
+    palette = texture.getpalette()
+    earth_scale = [[i / 255, f"rgb({palette[i*3]},{palette[i*3+1]},{palette[i*3+2]})"] for i in range(256)]
+    sphere_x, sphere_y, sphere_z, earth_colors = [], [], [], []
     for i in range(u + 1):
-        row_x, row_y, row_z = [], [], []
-        color_row = []
-        lat_r = math.pi * (i / u - 0.5)
-        latitude_deg = math.degrees(lat_r)
-        for j in range(v + 1):
-            lon_r = 2 * math.pi * j / v
-            longitude_deg = (math.degrees(lon_r) + 180) % 360 - 180
-            row_x.append(EARTH_RADIUS_M * math.cos(lat_r) * math.cos(lon_r) / 1000)
-            row_y.append(EARTH_RADIUS_M * math.cos(lat_r) * math.sin(lon_r) / 1000)
-            row_z.append(EARTH_RADIUS_M * math.sin(lat_r) / 1000)
-            if abs(latitude_deg) >= 78:
-                color = 0.91
-            elif on_land(longitude_deg, latitude_deg):
-                # Deterministic geographic shading adds forests, dry regions, and
-                # highlands while keeping the map lightweight and self-contained.
-                terrain = (math.sin(math.radians(longitude_deg * 2.7 + latitude_deg * 3.1))
-                           + math.cos(math.radians(longitude_deg * 5.1 - latitude_deg * 2.2))) / 2
-                if abs(latitude_deg) < 22 and terrain < -0.12:
-                    color = 0.57 + 0.035 * terrain
-                elif terrain > 0.55:
-                    color = 0.76
-                else:
-                    color = 0.40 + max(0, terrain) * 0.15
-            else:
-                ocean = math.sin(math.radians(longitude_deg * 2.4 + latitude_deg * 1.7)) * math.cos(math.radians(latitude_deg * 2.8))
-                color = 0.13 + (ocean + 1) * 0.035
-            color_row.append(color)
-        sphere_x.append(row_x); sphere_y.append(row_y); sphere_z.append(row_z); earth_colors.append(color_row)
-    earth_scale = [
-        [0.00, "#071c36"], [0.13, "#0c3153"], [0.20, "#15517a"], [0.25, "#287ba0"],
-        [0.34, "#327747"], [0.45, "#61964f"], [0.56, "#a4a15c"], [0.67, "#b68550"],
-        [0.77, "#ded08b"], [0.86, "#d9d5b8"], [0.93, "#f3f4e8"], [1.00, "#ffffff"],
-    ]
+        lat = math.pi * (i / u - 0.5)
+        sphere_x.append([EARTH_RADIUS_M / 1000 * math.cos(lat) * math.cos(2 * math.pi * j / v) for j in range(v + 1)])
+        sphere_y.append([EARTH_RADIUS_M / 1000 * math.cos(lat) * math.sin(2 * math.pi * j / v) for j in range(v + 1)])
+        sphere_z.append([EARTH_RADIUS_M / 1000 * math.sin(lat)] * (v + 1))
+        earth_colors.append([texture.getpixel(((j + v // 2) % v, min(u - 1, u - i))) for j in range(v + 1)])
     fig = go.Figure(go.Surface(x=sphere_x, y=sphere_y, z=sphere_z, surfacecolor=earth_colors,
-                               cmin=0, cmax=1, colorscale=earth_scale, showscale=False,
+                               cmin=0, cmax=255, colorscale=earth_scale, showscale=False,
                                lighting={"ambient": 0.38, "diffuse": 0.92, "specular": 0.12, "roughness": 0.82},
                                lightposition={"x": 1200, "y": 900, "z": 1400}, name="Earth"))
     # A fixed star field gives the globe the deep-space setting from the reference.
@@ -348,6 +296,25 @@ with orbit_tab:
         },
         showlegend=False,
     )
+    satellite_trace = next(i for i, trace in enumerate(fig.data) if trace.name == "Satellites")
+    crosslink_trace = next(i for i, trace in enumerate(fig.data) if trace.name == "Optical crosslinks")
+    frames = []
+    for frame_index in range(0, len(result.times_seconds), max(1, len(result.times_seconds) // 60)):
+        snapshot = result.satellite_states[frame_index]
+        cx, cy, cz = [], [], []
+        for left_i, left in enumerate(snapshot):
+            for right in snapshot[left_i + 1:]:
+                if optical_link(left.position_ecef_m, right.position_ecef_m, maximum_range_m=5_000_000).available:
+                    for axis, values in enumerate((cx, cy, cz)):
+                        values.extend([left.position_ecef_m[axis] / 1000, right.position_ecef_m[axis] / 1000, None])
+        frames.append(go.Frame(name=str(frame_index), traces=[satellite_trace, crosslink_trace], data=[
+            go.Scatter3d(x=[x.position_ecef_m[0]/1000 for x in snapshot], y=[x.position_ecef_m[1]/1000 for x in snapshot], z=[x.position_ecef_m[2]/1000 for x in snapshot], text=[x.satellite_id for x in snapshot]),
+            go.Scatter3d(x=cx, y=cy, z=cz)], layout={"title": f"Elapsed: {result.times_seconds[frame_index]/60:g} minutes"}))
+    fig.frames = frames
+    fig.update_layout(updatemenus=[{"type": "buttons", "buttons": [
+        {"label": "▶ Play orbit simulation", "method": "animate", "args": [None, {"frame": {"duration": 300, "redraw": True}, "transition": {"duration": 0}, "fromcurrent": True}]},
+        {"label": "Pause", "method": "animate", "args": [[None], {"mode": "immediate", "frame": {"duration": 0, "redraw": False}}]}]}])
+    st.caption("Playback shows calculated satellite positions and changing links. Orbit curves mark the selected starting instant. Earth imagery: Three.js Earth texture; this is a fixed image, not live weather.")
     st.plotly_chart(fig, use_container_width=True)
     if result.model_name == "TLE + SGP4":
         st.caption("TLE states are propagated in TEME. Ground geometry uses a GMST-rotated PEF approximation (UTC≈UT1, no polar-motion correction); green paths show the sampled run window.")
@@ -453,6 +420,22 @@ with network_tab:
         marker={"size": 5, "color": ["#ff605c" if n in ("terminal", "gateway") else "#ffcc66" for n, _ in active_points]},
         name="Network nodes"))
     network_fig.update_layout(height=520, margin={"l": 0, "r": 0, "t": 10, "b": 0}, scene={"aspectmode": "data"})
+    if route:
+        path = route[0]
+        packet_trace = len(network_fig.data)
+        start_point = points[path[0]]
+        network_fig.add_trace(go.Scatter3d(x=[start_point[0]], y=[start_point[1]], z=[start_point[2]], mode="markers", marker={"size": 10, "color": "#ffffff"}, name="Packet"))
+        packet_frames, events = [], []
+        elapsed = 0.0
+        for hop, edge in enumerate(graph.edges_for_path(path)):
+            elapsed += 1200 * 8 / edge.capacity_bps + edge.delay_s
+            point = points[edge.target]
+            events.append({"Step": hop + 1, "From": edge.source, "To": edge.target, "Arrival (ms)": elapsed * 1000})
+            packet_frames.append(go.Frame(name=str(hop), traces=[packet_trace], data=[go.Scatter3d(x=[point[0]], y=[point[1]], z=[point[2]])], layout={"title": f"Step {hop+1}: {edge.source} → {edge.target}"}))
+        network_fig.frames = packet_frames
+        network_fig.update_layout(updatemenus=[{"type": "buttons", "buttons": [{"label": "▶ Send packet", "method": "animate", "args": [None, {"frame": {"duration": 1000, "redraw": True}, "transition": {"duration": 0}}]}]}], sliders=[{"steps": [{"label": str(i+1), "method": "animate", "args": [[f.name], {"mode": "immediate", "frame": {"duration": 0, "redraw": True}}]} for i,f in enumerate(packet_frames)]}])
+        st.caption("Follow one 1,200-byte packet hop by hop. Playback is slowed for visibility; the table shows calculated arrival times. Links are held at the selected orbit moment.")
+        st.dataframe(events, use_container_width=True)
     st.plotly_chart(network_fig, use_container_width=True)
     st.dataframe([{"packet": o.packet_id, "delivered": o.delivered, "route": " → ".join(o.route),
                     "latency_ms": o.latency_s * 1000 if o.latency_s is not None else None,
