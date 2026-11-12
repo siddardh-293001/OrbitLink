@@ -144,7 +144,12 @@ display_min_elevation = result_config.get("minimum_elevation", min_elevation)
 st.caption(f"Last run model: **{result.model_name}**" +
            (f" · Reference time: {result.reference_time_utc}" if result.reference_time_utc else ""))
 
-overview, orbit_tab, details_tab = st.tabs(["Connection summary", "Earth view", "Explore details"])
+overview, orbit_tab, learn_tab, details_tab = st.tabs(["Connection summary", "Earth view", "How LEO works", "Explore details"])
+with learn_tab:
+    st.subheader("Follow a request from your home to the internet")
+    st.caption("Press Play to watch the full journey, or Next step to learn at your own pace.")
+    from orbitlink.dashboard.leo_explainer import show_leo_explainer
+    show_leo_explainer()
 with details_tab:
     st.caption("Optional: inspect the measurements behind the summary or compare different scenarios.")
     ground_tab = st.expander("Where do satellites travel over Earth?")
