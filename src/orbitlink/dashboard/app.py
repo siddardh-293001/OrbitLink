@@ -26,43 +26,46 @@ from orbitlink.orbit.tle import parse_tle_catalog
 
 st.set_page_config(page_title="ORBITLINK | LEO Simulator", page_icon="🛰️", layout="wide")
 st.title("🛰️ ORBITLINK")
-st.caption("LEO constellation simulator · compare a configurable synthetic network with uploaded TLE orbits")
+st.caption("Explore how satellites connect a location on Earth to the internet.")
+st.info("Start with the ready-made 40-satellite example. Open Earth view to explore it, or expand Advanced setup in the sidebar to change the scenario.")
 
 with st.sidebar:
-    st.header("Build a scenario")
-    model_mode = st.radio("Orbit source", ["Synthetic demo", "TLE catalog + SGP4"],
-                          help="Synthetic uses a repeatable Walker-style constellation. TLE mode propagates uploaded element sets with SGP4.")
+    st.header("Set up your simulation")
+    st.caption("1. Choose your location · 2. Adjust the satellites · 3. Run")
     latitude = st.number_input("Terminal latitude (°)", min_value=-90.0, max_value=90.0, value=37.7749)
     longitude = st.number_input("Terminal longitude (°)", min_value=-180.0, max_value=180.0, value=-122.4194)
-    min_elevation = st.slider("Minimum elevation (°)", 5, 60, 25)
     duration_hours = st.slider("Duration (hours)", 0.25, 2.0, 2.0, 0.25)
-    uploaded_catalog = None
-    sim_date, sim_time = datetime.now(timezone.utc).date(), datetime.now(timezone.utc).time().replace(microsecond=0)
-    max_tle_age = 14.0
-    planes, satellites_per_plane, altitude_km, inclination_deg, phase_factor = 5, 8, 550.0, 53.0, 1
-    eccentricity, raan_offset_deg = 0.0, 0.0
-    timestep = 60
-    if model_mode == "Synthetic demo":
-        st.caption("Synthetic Walker-style constellation")
-        timestep = st.select_slider("Sample interval", options=[10, 30, 60], value=10,
-                                    format_func=lambda value: f"{value} seconds")
-        planes = st.slider("Orbital planes", 1, 8, 5)
-        satellites_per_plane = st.slider("Satellites per plane", 2, 12, 8)
-        altitude_km = st.slider("Orbit altitude (km)", 300, 2_000, 550, 50)
-        inclination_deg = st.slider("Inclination (°)", 0, 120, 53)
-        phase_factor = st.slider("Walker phase factor", 0, planes * satellites_per_plane, 1,
-                                  help="Controls how satellites are offset between adjacent planes.")
-        with st.expander("Advanced orbit settings"):
-            eccentricity = st.slider("Eccentricity", 0.0, 0.2, 0.0, 0.005,
-                                     help="Zero is circular. Larger values create elliptical demo orbits.")
-            raan_offset_deg = st.slider("First plane RAAN offset (°)", 0.0, 359.0, 0.0, 1.0)
-    else:
-        uploaded_catalog = st.file_uploader("Upload TLE catalog (.tle or .txt)", type=["tle", "txt"])
-        sim_date = st.date_input("Start date (UTC)", value=sim_date)
-        sim_time = st.time_input("Start time (UTC)", value=sim_time)
-        timestep = st.select_slider("Sample interval", options=[30, 60, 120], value=60,
-                                    format_func=lambda value: f"{value} seconds")
-        max_tle_age = st.number_input("Maximum TLE age (days)", min_value=1.0, max_value=30.0, value=14.0)
+    with st.expander("Advanced setup · orbit data and precision", expanded=False):
+        model_mode = st.radio("Orbit source", ["Synthetic demo", "TLE catalog + SGP4"],
+                              help="Synthetic uses a repeatable Walker-style constellation. TLE mode propagates uploaded element sets with SGP4.")
+        min_elevation = st.slider("Minimum elevation (°)", 5, 60, 25)
+        uploaded_catalog = None
+        sim_date, sim_time = datetime.now(timezone.utc).date(), datetime.now(timezone.utc).time().replace(microsecond=0)
+        max_tle_age = 14.0
+        planes, satellites_per_plane, altitude_km, inclination_deg, phase_factor = 5, 8, 550.0, 53.0, 1
+        eccentricity, raan_offset_deg = 0.0, 0.0
+        timestep = 60
+        if model_mode == "Synthetic demo":
+            st.caption("Synthetic Walker-style constellation")
+            timestep = st.select_slider("Sample interval", options=[10, 30, 60], value=10,
+                                        format_func=lambda value: f"{value} seconds")
+            planes = st.slider("Orbital planes", 1, 8, 5)
+            satellites_per_plane = st.slider("Satellites per plane", 2, 12, 8)
+            altitude_km = st.slider("Orbit altitude (km)", 300, 2_000, 550, 50)
+            inclination_deg = st.slider("Inclination (°)", 0, 120, 53)
+            phase_factor = st.slider("Walker phase factor", 0, planes * satellites_per_plane, 1,
+                                      help="Controls how satellites are offset between adjacent planes.")
+            with st.expander("Advanced orbit settings"):
+                eccentricity = st.slider("Eccentricity", 0.0, 0.2, 0.0, 0.005,
+                                         help="Zero is circular. Larger values create elliptical demo orbits.")
+                raan_offset_deg = st.slider("First plane RAAN offset (°)", 0.0, 359.0, 0.0, 1.0)
+        else:
+            uploaded_catalog = st.file_uploader("Upload TLE catalog (.tle or .txt)", type=["tle", "txt"])
+            sim_date = st.date_input("Start date (UTC)", value=sim_date)
+            sim_time = st.time_input("Start time (UTC)", value=sim_time)
+            timestep = st.select_slider("Sample interval", options=[30, 60, 120], value=60,
+                                        format_func=lambda value: f"{value} seconds")
+            max_tle_age = st.number_input("Maximum TLE age (days)", min_value=1.0, max_value=30.0, value=14.0)
     run = st.button("Run simulation", type="primary", use_container_width=True)
 
 site = GroundSite("Dashboard terminal", latitude, longitude)
@@ -76,7 +79,7 @@ requested_config = {
     "altitude_km": altitude_km, "inclination_deg": inclination_deg,
     "phase_factor": phase_factor, "eccentricity": eccentricity,
     "raan_offset_deg": raan_offset_deg, "catalog_digest": catalog_digest,
-    "start_time": simulation_start.isoformat(), "max_tle_age": max_tle_age,
+    "start_time": simulation_start.isoformat() if model_mode == "TLE catalog + SGP4" else None, "max_tle_age": max_tle_age,
 }
 if model_mode == "TLE catalog + SGP4" and uploaded_catalog is not None:
     try:
@@ -139,20 +142,30 @@ display_min_elevation = result_config.get("minimum_elevation", min_elevation)
 st.caption(f"Last run model: **{result.model_name}**" +
            (f" · Reference time: {result.reference_time_utc}" if result.reference_time_utc else ""))
 
-overview, orbit_tab, ground_tab, communication, handover, analytics, network_tab, experiment_tab = st.tabs(
-    ["Overview", "Orbit Viewer", "Ground Track", "Communication", "Handover", "Analytics", "Network", "Experiments"])
+overview, orbit_tab, details_tab = st.tabs(["Connection summary", "Earth view", "Explore details"])
+with details_tab:
+    st.caption("Optional: inspect the measurements behind the summary or compare different scenarios.")
+    ground_tab = st.expander("Where do satellites travel over Earth?")
+    communication = st.expander("How strong and fast is the connection?")
+    handover = st.expander("When does the connection switch satellites?")
+    analytics = st.expander("View measurements and download results")
+    network_tab = st.expander("How does a message travel through the network?")
+    experiment_tab = st.expander("Compare different satellite setups")
 
 with overview:
     metrics = st.columns(4)
     metrics[0].metric("Spacecraft", str(len(result.satellite_states[0])), result.model_name)
-    metrics[1].metric("Availability", f"{summary['availability_percent']:.1f}%")
-    metrics[2].metric("Visible satellites", f"{summary['mean_visible_satellites']:.2f}", "mean per sample")
-    metrics[3].metric("Handovers", str(summary["handover_count"]))
-    st.info("Availability, visibility, delay, and SNR come from the selected orbit model and geometry. Throughput and packet loss require a traffic model and are not estimated here.")
+    metrics[1].metric("Time connected", f"{summary['availability_percent']:.1f}%")
+    metrics[2].metric("Satellites in reach", f"{summary['mean_visible_satellites']:.2f}", "mean per sample")
+    metrics[3].metric("Satellite switches", str(summary["handover_count"]))
+    st.write(f"Your location can reach a satellite in **{summary['availability_percent']:.1f}% of the sampled moments**. "
+             f"The connection switches between satellites **{summary['handover_count']} times** during this run.")
+    st.caption("Time connected means a satellite is high enough above the horizon to serve your location. This is a simulation estimate, not a guarantee of real internet service.")
 
 with orbit_tab:
-    st.subheader("Virtual Constellation with Crosslink")
-    index = st.slider("Simulation sample", 0, len(result.times_seconds) - 1, min(0, len(result.times_seconds) - 1))
+    st.subheader("Satellites around Earth")
+    st.caption("Drag to rotate Earth. Scroll to zoom. Green curves are orbit paths; straight green lines are possible links between satellites.")
+    index = st.select_slider("Explore a moment in the simulation", options=list(range(len(result.times_seconds))), value=0, format_func=lambda i: f"{result.times_seconds[i] / 60:g} minutes after start")
     states = result.satellite_states[index]
     # Build a higher-resolution Earth surface and shade land, ocean, relief, and
     # polar ice separately so the orbital view reads as a planet, not a plain ball.
