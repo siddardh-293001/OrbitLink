@@ -5,6 +5,10 @@ from __future__ import annotations
 import math
 import random
 import hashlib
+from io import BytesIO
+from orbitlink.orbit.catalog import parse_catalog, fetch_catalog
+
+
 from pathlib import Path
 from PIL import Image
 from datetime import datetime, timedelta, timezone
@@ -25,6 +29,10 @@ from orbitlink.network.topology import LinkEdge, NetworkGraph
 from orbitlink.orbit.constellation import generate_constellation
 from orbitlink.orbit.keplerian import orbital_period_seconds, propagate
 from orbitlink.orbit.tle import parse_tle_catalog
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def cached_catalog(group):
+    return fetch_catalog(group)
 
 st.set_page_config(page_title="ORBITLINK | LEO Simulator", page_icon="🛰️", layout="wide")
 st.title("🛰️ ORBITLINK")
@@ -73,7 +81,22 @@ with st.sidebar:
                                          help="Zero is circular. Larger values create elliptical demo orbits.")
                 raan_offset_deg = st.slider("First plane RAAN offset (°)", 0.0, 359.0, 0.0, 1.0)
         else:
-            uploaded_catalog = st.file_uploader("Upload TLE catalog (.tle or .txt)", type=["tle", "txt"])
+            catalog_source = st.selectbox("Catalog", ["Starlink", "Iridium NEXT", "Upload a file"])
+            subset_limit = st.slider("Satellites in detailed simulation", 10, 100, 60, 10)
+            st.caption("Current orbital estimates, not live telemetry. Detailed simulation uses the freshest selected subset; links are hypothetical geometry, not the operator’s actual network.")
+            if catalog_source == "Upload a file":
+                uploaded_catalog = st.file_uploader("Upload orbital data", type=["json", "tle", "txt"])
+            else:
+                if st.button("Load current catalog"):
+                    try:
+                        with st.spinner("Fetching orbital data…"):
+                            st.session_state['catalog_' + catalog_source] = cached_catalog(catalog_source)
+                    except Exception as exc:
+                        st.error(f"Feed unavailable: {exc}. Try Iridium NEXT or upload a downloaded JSON catalog.")
+                saved_catalog = st.session_state.get('catalog_' + catalog_source)
+                if saved_catalog:
+                    uploaded_catalog = BytesIO(saved_catalog[0])
+                    st.caption("Retrieved (UTC): " + saved_catalog[1])
             sim_date = st.date_input("Start date (UTC)", value=sim_date)
             sim_time = st.time_input("Start time (UTC)", value=sim_time)
             timestep = st.select_slider("Sample interval", options=[30, 60, 120], value=60,
@@ -92,18 +115,22 @@ requested_config = {
     "altitude_km": altitude_km, "inclination_deg": inclination_deg,
     "phase_factor": phase_factor, "eccentricity": eccentricity, "include_j2": include_j2,
     "plane_altitudes_km": plane_altitudes_km, "plane_inclinations_deg": plane_inclinations_deg,
-    "raan_offset_deg": raan_offset_deg, "catalog_digest": catalog_digest,
+    "raan_offset_deg": raan_offset_deg, "catalog_digest": catalog_digest, "subset_limit": subset_limit if model_mode != "Synthetic demo" else None,
     "start_time": simulation_start.isoformat() if model_mode == "TLE catalog + SGP4" else None, "max_tle_age": max_tle_age,
 }
 if model_mode == "TLE catalog + SGP4" and uploaded_catalog is not None:
     try:
-        tle_records = parse_tle_catalog(uploaded_catalog.getvalue().decode("utf-8-sig"))
+        tle_records = parse_catalog(uploaded_catalog.getvalue().decode("utf-8-sig"))
+        total_records = len(tle_records)
+        tle_records = tuple(sorted(tle_records, key=lambda r: r.epoch, reverse=True)[:subset_limit])
+        st.sidebar.caption(f"Simulating {len(tle_records)} of {total_records} catalog entries (freshest epochs).")
+        st.sidebar.caption(f"Selected epochs: {min(r.epoch for r in tle_records).isoformat()} to {max(r.epoch for r in tle_records).isoformat()}")
         quality_end = simulation_start + timedelta(seconds=int(duration_hours * 3600))
         tle_issues = [(record.name, issue) for record in tle_records
                       for sample in (simulation_start, quality_end)
                       for issue in record.quality(sample, max_age_days=max_tle_age)]
         st.sidebar.caption(f"Catalog: {len(tle_records)} satellites · max age {max_tle_age:g} days")
-    except (UnicodeDecodeError, ValueError) as exc:
+    except (UnicodeDecodeError, ValueError, KeyError, TypeError) as exc:
         tle_error = str(exc)
         st.sidebar.error(f"Catalog could not be read: {tle_error}")
 if model_mode == "TLE catalog + SGP4":

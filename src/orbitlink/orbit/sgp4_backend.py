@@ -69,7 +69,12 @@ def propagate_tle(record: TLERecord, time_utc: datetime, *, max_age_days: float 
         from sgp4.api import Satrec, jday
     except ImportError as exc:
         raise RuntimeError("SGP4 backend needs the optional dependency: pip install 'orbitlink[full]'") from exc
-    satellite = Satrec.twoline2rv(record.line1, record.line2)
+    if hasattr(record, "fields"):
+        from sgp4 import omm
+        satellite = Satrec()
+        omm.initialize(satellite, record.fields)
+    else:
+        satellite = Satrec.twoline2rv(record.line1, record.line2)
     jd, fr = jday(time_utc.year, time_utc.month, time_utc.day, time_utc.hour,
                   time_utc.minute, time_utc.second + time_utc.microsecond / 1e6)
     error, position_km, velocity_km_s = satellite.sgp4(jd, fr)
