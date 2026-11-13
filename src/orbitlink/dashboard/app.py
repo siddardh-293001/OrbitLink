@@ -46,6 +46,7 @@ with st.sidebar:
         max_tle_age = 14.0
         planes, satellites_per_plane, altitude_km, inclination_deg, phase_factor = 5, 8, 550.0, 53.0, 1
         eccentricity, raan_offset_deg = 0.0, 0.0
+        plane_altitudes_km, plane_inclinations_deg = None, None
         include_j2 = False
         timestep = 60
         if model_mode == "Synthetic demo":
@@ -57,6 +58,14 @@ with st.sidebar:
             satellites_per_plane = st.slider("Satellites per plane", 2, 12, 8)
             altitude_km = st.slider("Orbit altitude (km)", 300, 2_000, 550, 50)
             inclination_deg = st.slider("Inclination (°)", 0, 120, 53)
+            if st.checkbox("Customize each orbital plane", help="Give different groups of satellites different heights and tilts."):
+                plane_altitudes_km, plane_inclinations_deg = [], []
+                st.caption("Height is the circular altitude, or semimajor-axis height for an elliptical orbit. Tilt is measured from the equator.")
+                for plane_index in range(planes):
+                    st.markdown(f"**Plane {plane_index + 1}**")
+                    plane_altitudes_km.append(st.number_input("Height (km)", min_value=300.0, max_value=2000.0, value=float(altitude_km), step=50.0, key=f"plane_height_{plane_index}"))
+                    plane_inclinations_deg.append(st.number_input("Tilt (°)", min_value=0.0, max_value=180.0, value=float(inclination_deg), step=1.0, key=f"plane_tilt_{plane_index}"))
+
             phase_factor = st.slider("Walker phase factor", 0, planes * satellites_per_plane, 1,
                                       help="Controls how satellites are offset between adjacent planes.")
             with st.expander("Advanced orbit settings"):
@@ -82,6 +91,7 @@ requested_config = {
     "timestep": timestep, "planes": planes, "satellites_per_plane": satellites_per_plane,
     "altitude_km": altitude_km, "inclination_deg": inclination_deg,
     "phase_factor": phase_factor, "eccentricity": eccentricity, "include_j2": include_j2,
+    "plane_altitudes_km": plane_altitudes_km, "plane_inclinations_deg": plane_inclinations_deg,
     "raan_offset_deg": raan_offset_deg, "catalog_digest": catalog_digest,
     "start_time": simulation_start.isoformat() if model_mode == "TLE catalog + SGP4" else None, "max_tle_age": max_tle_age,
 }
@@ -122,7 +132,8 @@ if "result" not in st.session_state or run:
                     timestep_seconds=timestep, minimum_elevation_deg=min_elevation,
                     planes=planes, satellites_per_plane=satellites_per_plane,
                     altitude_km=altitude_km, inclination_deg=inclination_deg, phase_factor=phase_factor,
-                    eccentricity=eccentricity, raan_offset_deg=raan_offset_deg, include_j2=include_j2)
+                    eccentricity=eccentricity, raan_offset_deg=raan_offset_deg, include_j2=include_j2,
+                    plane_altitudes_km=plane_altitudes_km, plane_inclinations_deg=plane_inclinations_deg)
             st.session_state.result_config = requested_config
     except (ValueError, RuntimeError) as exc:
         st.error(f"Simulation could not run: {exc}")
@@ -224,7 +235,9 @@ with orbit_tab:
         elements = generate_constellation(planes=display_planes, satellites_per_plane=display_satellites_per_plane,
             altitude_km=display_altitude_km, inclination_deg=display_inclination_deg,
             eccentricity=display_eccentricity, phase_factor=display_phase_factor,
-            raan_offset_deg=display_raan_offset)
+            raan_offset_deg=display_raan_offset,
+            plane_altitudes_km=result_config.get("plane_altitudes_km"),
+            plane_inclinations_deg=result_config.get("plane_inclinations_deg"))
         elements_by_id = {element.satellite_id: element for element in elements}
         earth_angle = EARTH_ROTATION_RAD_S * simulation_time
         cos_earth, sin_earth = math.cos(earth_angle), math.sin(earth_angle)

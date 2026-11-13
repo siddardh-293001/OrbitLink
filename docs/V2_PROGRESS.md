@@ -11,10 +11,13 @@ Version 2 is in progress. This is a delivery ledger for the original project pla
 - Configure synthetic plane count, satellites per plane, altitude, inclination, Walker phase, ellipticity, and initial RAAN; reject nonphysical inputs.
 - Label the last-run model and reference time, report TLE quality before a run, distinguish elapsed simulation time from UTC, show sampled TLE trails, and warn when scenario controls have changed since the last run.
 
+- Mixed-altitude and mixed-inclination planes are available in the dashboard, with matching rendered paths.
+- Optional secular J2 propagation is available in the engine and dashboard; it models long-term mean-element drift.
+
 ## Still in Version 2 scope
 
 - Higher-accuracy TEME-to-terrestrial transforms using UT1 and polar motion, with a clear precision and time-data policy.
-- Multi-altitude and multi-inclination Walker planes; J2 perturbations and broader orbit perturbation support.
+- Broader perturbation support beyond first-order secular J2, including drag and short-period variations.
 - Reproducible propagation comparisons across more reference epochs and orbit regimes.
 - Full advanced RF and optical assumptions, dynamic topology/routing/packet studies, and experiment/dashboard refinements described in `PHASES.md`.
 
