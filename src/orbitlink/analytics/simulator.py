@@ -19,7 +19,8 @@ def run_simulation(*, site: GroundSite | None = None, duration_seconds: int = 72
                    earth_rotation: bool = True, eccentricity: float = 0,
                    phase_factor: int = 1, raan_offset_deg: float = 0,
                    plane_altitudes_km: list[float] | None = None,
-                   plane_inclinations_deg: list[float] | None = None) -> SimulationResult:
+                   plane_inclinations_deg: list[float] | None = None,
+                   include_j2: bool = False) -> SimulationResult:
     if duration_seconds < 0 or timestep_seconds <= 0:
         raise ValueError("duration must be non-negative and timestep must be positive")
     site = site or GroundSite("Demo terminal", 37.7749, -122.4194)
@@ -30,9 +31,11 @@ def run_simulation(*, site: GroundSite | None = None, duration_seconds: int = 72
                                       plane_altitudes_km=plane_altitudes_km,
                                       plane_inclinations_deg=plane_inclinations_deg)
     manager = HandoverManager(hysteresis_deg, minimum_elevation_deg)
-    result = SimulationResult(model_name="Synthetic Keplerian")
+    from orbitlink.orbit.j2 import propagate_j2
+    propagator = propagate_j2 if include_j2 else propagate
+    result = SimulationResult(model_name="Synthetic secular J2" if include_j2 else "Synthetic Keplerian")
     for t in range(0, duration_seconds + 1, timestep_seconds):
-        states = [propagate(item, t, earth_rotation=earth_rotation) for item in elements]
+        states = [propagator(item, t, earth_rotation=earth_rotation) for item in elements]
         visible = visible_satellites(site, states, minimum_elevation_deg)
         serving_id = manager.update(t, visible)
         serving = next((x for x in visible if x.satellite_id == serving_id), None)
