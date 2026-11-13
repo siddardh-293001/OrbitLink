@@ -46,9 +46,11 @@ with st.sidebar:
         max_tle_age = 14.0
         planes, satellites_per_plane, altitude_km, inclination_deg, phase_factor = 5, 8, 550.0, 53.0, 1
         eccentricity, raan_offset_deg = 0.0, 0.0
+        include_j2 = False
         timestep = 60
         if model_mode == "Synthetic demo":
             st.caption("Synthetic Walker-style constellation")
+            include_j2 = st.checkbox("Include Earth’s shape (J2)", help="Models the gradual drift caused by Earth’s equatorial bulge. Uses a long-term approximation; drag and short-period effects are excluded.")
             timestep = st.select_slider("Sample interval", options=[10, 30, 60], value=10,
                                         format_func=lambda value: f"{value} seconds")
             planes = st.slider("Orbital planes", 1, 8, 5)
@@ -79,7 +81,7 @@ requested_config = {
     "minimum_elevation": min_elevation, "duration_hours": duration_hours,
     "timestep": timestep, "planes": planes, "satellites_per_plane": satellites_per_plane,
     "altitude_km": altitude_km, "inclination_deg": inclination_deg,
-    "phase_factor": phase_factor, "eccentricity": eccentricity,
+    "phase_factor": phase_factor, "eccentricity": eccentricity, "include_j2": include_j2,
     "raan_offset_deg": raan_offset_deg, "catalog_digest": catalog_digest,
     "start_time": simulation_start.isoformat() if model_mode == "TLE catalog + SGP4" else None, "max_tle_age": max_tle_age,
 }
@@ -120,7 +122,7 @@ if "result" not in st.session_state or run:
                     timestep_seconds=timestep, minimum_elevation_deg=min_elevation,
                     planes=planes, satellites_per_plane=satellites_per_plane,
                     altitude_km=altitude_km, inclination_deg=inclination_deg, phase_factor=phase_factor,
-                    eccentricity=eccentricity, raan_offset_deg=raan_offset_deg)
+                    eccentricity=eccentricity, raan_offset_deg=raan_offset_deg, include_j2=include_j2)
             st.session_state.result_config = requested_config
     except (ValueError, RuntimeError) as exc:
         st.error(f"Simulation could not run: {exc}")
@@ -280,7 +282,7 @@ with orbit_tab:
     minutes, seconds = divmod(remainder, 60)
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Spacecraft", len(states))
-    m2.metric("Orbital planes", str(display_planes) if result.model_name == "Synthetic Keplerian" else "Catalog")
+    m2.metric("Orbital planes", str(display_planes) if result.model_name.startswith("Synthetic") else "Catalog")
     m3.metric("Optical crosslinks", len(crosslink_x) // 3)
     if result.model_name == "TLE + SGP4" and result.reference_time_utc:
         actual_time = datetime.fromisoformat(result.reference_time_utc) + timedelta(seconds=sim_time)
@@ -321,6 +323,8 @@ with orbit_tab:
         {"label": "Pause", "method": "animate", "args": [[None], {"mode": "immediate", "frame": {"duration": 0, "redraw": False}}]}]}])
     st.caption("Playback shows calculated satellite positions and changing links. Orbit curves mark the selected starting instant. Earth imagery: Three.js Earth texture; this is a fixed image, not live weather.")
     st.plotly_chart(fig, use_container_width=True)
+    if result.model_name == "Synthetic secular J2":
+        st.caption("J2 paths show calculated samples over this run. Earth’s shape slowly shifts the orbit; these paths are not forced into closed circles. Drag and short-period variations are excluded.")
     if result.model_name == "TLE + SGP4":
         st.caption("TLE states are propagated in TEME. Ground geometry uses a GMST-rotated PEF approximation (UTC≈UT1, no polar-motion correction); green paths show the sampled run window.")
 
