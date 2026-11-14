@@ -6,7 +6,7 @@ import math
 import random
 import hashlib
 from io import BytesIO
-from orbitlink.orbit.catalog import parse_catalog, fetch_catalog
+from orbitlink.orbit.catalog import parse_catalog, load_catalog
 
 
 from pathlib import Path
@@ -32,7 +32,7 @@ from orbitlink.orbit.tle import parse_tle_catalog
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def cached_catalog(group):
-    return fetch_catalog(group)
+    return load_catalog(group)
 
 st.set_page_config(page_title="ORBITLINK | LEO Simulator", page_icon="🛰️", layout="wide")
 st.title("🛰️ ORBITLINK")
@@ -97,6 +97,8 @@ with st.sidebar:
                 if saved_catalog:
                     uploaded_catalog = BytesIO(saved_catalog[0])
                     st.caption("Retrieved (UTC): " + saved_catalog[1])
+                    if len(saved_catalog) > 2:
+                        st.info(saved_catalog[2])
             sim_date = st.date_input("Start date (UTC)", value=sim_date)
             sim_time = st.time_input("Start time (UTC)", value=sim_time)
             timestep = st.select_slider("Sample interval", options=[30, 60, 120], value=60,
@@ -137,7 +139,7 @@ if model_mode == "TLE catalog + SGP4":
     if tle_error:
         st.error(f"TLE input error: {tle_error}")
     elif uploaded_catalog is None:
-        st.info("Upload a TLE catalog in the sidebar to configure a real-orbit scenario.")
+        st.info("Click Load current catalog in the sidebar, or choose Upload a file.")
     elif tle_issues:
         st.warning("TLE quality check found issues. Adjust the UTC start time or upload fresher element sets. "
                    + " · ".join(f"{name}: {issue}" for name, issue in tle_issues[:5]))
@@ -147,7 +149,7 @@ if "result" not in st.session_state or run:
     try:
         with st.spinner("Propagating orbits and measuring links…"):
             if model_mode == "TLE catalog + SGP4":
-                if not tle_records or tle_issues:
+                if not tle_records or tle_issues or tle_error:
                     st.error("Resolve the TLE catalog quality checks before running the simulation.")
                     st.stop()
                 st.session_state.result = run_tle_simulation(

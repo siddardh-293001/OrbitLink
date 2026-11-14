@@ -55,3 +55,22 @@ def fetch_catalog(group):
         raise ValueError('Catalog exceeds the 10 MB limit')
     parse_catalog(body.decode('utf-8-sig'))
     return body, datetime.now(timezone.utc).isoformat()
+
+
+def load_catalog(group):
+    """Try the network; on failure return a labeled, dated real-data snapshot."""
+    from pathlib import Path
+    try:
+        body, retrieved = fetch_catalog(group)
+        return body, retrieved, 'Downloaded from CelesTrak'
+    except (OSError, ValueError, KeyError, TypeError):
+        path = Path(__file__).parent / 'data' / (GROUPS[group] + '.json')
+        if not path.exists():
+            raise RuntimeError('The feed is unavailable and no saved catalog exists. Upload a JSON catalog.')
+        snapshot = json.loads(path.read_text())
+        body = json.dumps(snapshot['records']).encode()
+        records = parse_catalog(body.decode())
+        now = datetime.now(timezone.utc)
+        if not any(0 <= (now-r.epoch).total_seconds()/86400 <= 14 for r in records):
+            raise RuntimeError('The feed is unavailable and the saved catalog has expired. Upload fresh orbital data.')
+        return body, snapshot['retrieved_at'], 'Saved real-data snapshot — live feed unavailable'

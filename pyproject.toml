@@ -27,3 +27,5 @@ testpaths = ["tests"]
 
 [tool.setuptools.package-data]
 "orbitlink.dashboard" = ["assets/*.jpg", "assets/*.md"]
+
+"orbitlink.orbit" = ["data/*.json"]
