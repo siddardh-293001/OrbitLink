@@ -1,0 +1,2 @@
+"""Orbital Midnight semantic color tokens."""
+COLORS = dict(background='#09111F', surface='#14243A', surface_alt='#101D30', sidebar='#060B14', primary='#39D9F2', secondary='#A78BFA', warning='#F5B942', success='#39C98A', danger='#FF647C', text='#F0F6FF', text_muted='#91A4BE', border='#26374D', disabled='#536273', satellite_active='#39D9F2', satellite_inactive='#D7E2F0', orbit='#A78BFA', rf_link='#39D9F2', optical_link='#F5B942', gateway='#39C98A')

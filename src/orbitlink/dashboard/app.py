@@ -45,7 +45,8 @@ def cached_tle_simulation(records, **kwargs):
     return run_tle_simulation(records, **kwargs)
 
 st.set_page_config(page_title="ORBITLINK | LEO Simulator", page_icon="🛰️", layout="wide")
-st.title("🛰️ ORBITLINK")
+st.markdown("""<style>.stApp{background:#09111F}section[data-testid="stSidebar"]{background:#060B14}[data-testid="stMetric"]{background:#14243A;border:1px solid #26374D;border-radius:12px;padding:18px}[data-testid="stMetricValue"]{font-family:monospace}.stTabs [aria-selected="true"]{color:#39D9F2}</style>""",unsafe_allow_html=True)
+st.title("◉ ORBITLINK · Mission Control")
 st.caption("Explore how satellites connect a location on Earth to the internet.")
 st.info("Start with the ready-made 40-satellite example. Open Earth view to explore it, or expand Advanced setup in the sidebar to change the scenario.")
 
@@ -273,7 +274,7 @@ with orbit_tab:
                 path_y.append((-sin_earth * x_eci + cos_earth * y_eci) / 1000)
                 path_z.append(z_eci / 1000)
             fig.add_trace(go.Scatter3d(x=path_x, y=path_y, z=path_z,
-                mode="lines", line={"color": "#7cff52", "width": 2}, opacity=0.48,
+                mode="lines", line={"color": "#A78BFA", "width": 2}, opacity=0.48,
                 hoverinfo="skip", showlegend=False, name=f"Plane {plane} orbit"))
     else:
         # TLE-mode trails use the actual SGP4 samples in this run, so the
@@ -285,7 +286,7 @@ with orbit_tab:
             path = [item for item in path if item is not None]
             fig.add_trace(go.Scatter3d(x=[p.position_ecef_m[0] / 1000 for p in path],
                 y=[p.position_ecef_m[1] / 1000 for p in path], z=[p.position_ecef_m[2] / 1000 for p in path],
-                mode="lines", line={"color": "#7cff52", "width": 2}, opacity=0.48,
+                mode="lines", line={"color": "#A78BFA", "width": 2}, opacity=0.48,
                 hoverinfo="skip", showlegend=False, name=f"{satellite_id} sampled path"))
 
     if len(states) > 100:
@@ -301,15 +302,15 @@ with orbit_tab:
                 crosslink_y.extend([left.position_ecef_m[1] / 1000, right.position_ecef_m[1] / 1000, None])
                 crosslink_z.extend([left.position_ecef_m[2] / 1000, right.position_ecef_m[2] / 1000, None])
     fig.add_trace(go.Scatter3d(x=crosslink_x, y=crosslink_y, z=crosslink_z,
-        mode="lines", line={"color": "#a5ff43", "width": 2}, opacity=0.76,
+        mode="lines", line={"color": "#F5B942", "width": 2}, opacity=0.76,
         hoverinfo="skip", showlegend=False, name="Optical crosslinks"))
 
     # Satellite markers stay bright and identifiable against the space backdrop.
     fig.add_trace(go.Scatter3d(x=[s.position_ecef_m[0]/1000 for s in states],
         y=[s.position_ecef_m[1]/1000 for s in states], z=[s.position_ecef_m[2]/1000 for s in states],
-        mode="markers", marker={"size": 3, "color": "#64d8ff", "line": {"color": "#89ff43", "width": 1}},
+        mode="markers", marker={"size": 3, "color": "#D7E2F0", "line": {"color": "#39D9F2", "width": 1}},
         text=[s.satellite_id for s in states], textposition="top center",
-        textfont={"size": 8, "color": "#a5ff43"}, customdata=[s.satellite_id for s in states],
+        textfont={"size": 8, "color": "#F5B942"}, customdata=[s.satellite_id for s in states],
         hovertemplate="%{customdata}<extra>Satellite</extra>", name="Satellites"))
     sim_time = int(result.times_seconds[index])
     hours, remainder = divmod(sim_time, 3600)
@@ -327,12 +328,12 @@ with orbit_tab:
     fig.update_layout(
         uirevision="earth-camera", dragmode="orbit",
         height=650, margin={"l": 0, "r": 0, "t": 0, "b": 0},
-        paper_bgcolor="#03070d", plot_bgcolor="#03070d",
+        paper_bgcolor="#060B14", plot_bgcolor="#060B14",
         scene={
             "uirevision": "earth-camera",
             "dragmode": "orbit",
             "aspectmode": "cube",
-            "bgcolor": "#03070d",
+            "bgcolor": "#060B14",
             "xaxis": {"visible": False, "range": [-8_800, 8_800]},
             "yaxis": {"visible": False, "range": [-8_800, 8_800]},
             "zaxis": {"visible": False, "range": [-8_800, 8_800]},
@@ -360,7 +361,7 @@ with orbit_tab:
     import streamlit.components.v1 as components
     from plotly.utils import PlotlyJSONEncoder
     payload = json.dumps(fig.to_plotly_json(), cls=PlotlyJSONEncoder).replace("</", "<\/")
-    viewer = """<html><head><style>body{margin:0;background:transparent;font:15px system-ui;color:#dce7f4}#globe{height:650px;background:#03070d;border-radius:12px}.controls{display:flex;align-items:center;gap:12px;padding:14px 4px}button{background:#183d58;color:white;border:1px solid #4b7796;border-radius:8px;padding:10px 22px;cursor:pointer}</style></head><body>
+    viewer = """<html><head><style>body{margin:0;background:transparent;font:15px system-ui;color:#dce7f4}#globe{height:650px;background:#060B14;border-radius:12px}.controls{display:flex;align-items:center;gap:12px;padding:14px 4px}button{background:#183d58;color:white;border:1px solid #4b7796;border-radius:8px;padding:10px 22px;cursor:pointer}</style></head><body>
     <div id="globe"></div><div class="controls"><button id="play">▶ Play</button><button id="pause">Pause</button><span id="status">Drag to rotate · scroll to zoom</span></div>
     <script src="https://cdn.plot.ly/plotly-3.1.0.min.js"></script><script>
     const figure=PAYLOAD;const graph=document.getElementById('globe');
