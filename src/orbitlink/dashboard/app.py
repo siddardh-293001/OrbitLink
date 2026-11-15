@@ -81,13 +81,15 @@ with st.sidebar:
                                          help="Zero is circular. Larger values create elliptical demo orbits.")
                 raan_offset_deg = st.slider("First plane RAAN offset (°)", 0.0, 359.0, 0.0, 1.0)
         else:
-            catalog_source = st.selectbox("Catalog", ["Starlink", "Iridium NEXT", "Upload a file"])
+            load_clicked = False
+            catalog_source = st.selectbox("Catalog", ["Iridium NEXT", "Starlink", "Upload a file"])
             subset_limit = st.slider("Satellites in detailed simulation", 10, 100, 60, 10)
             st.caption("Current orbital estimates, not live telemetry. Detailed simulation uses the freshest selected subset; links are hypothetical geometry, not the operator’s actual network.")
             if catalog_source == "Upload a file":
                 uploaded_catalog = st.file_uploader("Upload orbital data", type=["json", "tle", "txt"])
             else:
-                if st.button("Load current catalog"):
+                load_clicked = st.button("Load catalog and run")
+                if load_clicked:
                     try:
                         with st.spinner("Fetching orbital data…"):
                             st.session_state['catalog_' + catalog_source] = cached_catalog(catalog_source)
@@ -145,7 +147,7 @@ if model_mode == "TLE catalog + SGP4":
                    + " · ".join(f"{name}: {issue}" for name, issue in tle_issues[:5]))
     else:
         st.success(f"TLE quality check passed for all {len(tle_records)} satellites across the selected run.")
-if "result" not in st.session_state or run:
+if "result" not in st.session_state or run or (model_mode != "Synthetic demo" and load_clicked):
     try:
         with st.spinner("Propagating orbits and measuring links…"):
             if model_mode == "TLE catalog + SGP4":
