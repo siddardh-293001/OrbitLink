@@ -337,9 +337,12 @@ with orbit_tab:
         simulation_label = f"{hours:02d}:{minutes:02d}:{seconds:02d} elapsed"
     m4.metric("Simulation time", simulation_label)
     fig.update_layout(
+        uirevision="earth-camera", dragmode="orbit",
         height=720, margin={"l": 0, "r": 0, "t": 0, "b": 0},
         paper_bgcolor="#03070d", plot_bgcolor="#03070d",
         scene={
+            "uirevision": "earth-camera",
+            "dragmode": "orbit",
             "aspectmode": "cube",
             "bgcolor": "#03070d",
             "xaxis": {"visible": False, "range": [-12_500, 12_500]},
@@ -365,10 +368,10 @@ with orbit_tab:
             go.Scatter3d(x=cx, y=cy, z=cz)], layout={"title": f"Elapsed: {result.times_seconds[frame_index]/60:g} minutes"}))
     fig.frames = frames
     fig.update_layout(updatemenus=[{"type": "buttons", "buttons": [
-        {"label": "▶ Play orbit simulation", "method": "animate", "args": [None, {"frame": {"duration": 300, "redraw": True}, "transition": {"duration": 0}, "fromcurrent": True}]},
+        {"label": "▶ Play orbit simulation", "method": "animate", "args": [None, {"frame": {"duration": 300, "redraw": False}, "transition": {"duration": 0}, "fromcurrent": True}]},
         {"label": "Pause", "method": "animate", "args": [[None], {"mode": "immediate", "frame": {"duration": 0, "redraw": False}}]}]}])
     st.caption("Playback shows calculated satellite positions and changing links. Orbit curves mark the selected starting instant. Earth imagery: Three.js Earth texture; this is a fixed image, not live weather.")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="earth_view", config={"scrollZoom": True})
     if result.model_name == "Synthetic secular J2":
         st.caption("J2 paths show calculated samples over this run. Earth’s shape slowly shifts the orbit; these paths are not forced into closed circles. Drag and short-period variations are excluded.")
     if result.model_name == "TLE + SGP4":
