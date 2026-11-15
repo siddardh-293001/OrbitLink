@@ -8,6 +8,7 @@ modeled in this phase; timestamps use UTC as an UT1 approximation.
 from __future__ import annotations
 
 import math
+from functools import lru_cache
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -60,6 +61,18 @@ def teme_to_ecef(position_teme_m: tuple[float, float, float], time_utc: datetime
     return c*x + s*y, -s*x + c*y, z
 
 
+@lru_cache(maxsize=1500)
+def _initialized_satellite(line1, line2, fields_json):
+    from sgp4.api import Satrec
+    if fields_json:
+        import json
+        from sgp4 import omm
+        satellite = Satrec()
+        omm.initialize(satellite, json.loads(fields_json))
+        return satellite
+    return Satrec.twoline2rv(line1, line2)
+
+
 def propagate_tle(record: TLERecord, time_utc: datetime, *, max_age_days: float = 14) -> SGP4State:
     time_utc = time_utc.replace(tzinfo=timezone.utc) if time_utc.tzinfo is None else time_utc.astimezone(timezone.utc)
     issues = record.quality(time_utc, max_age_days=max_age_days)
@@ -69,12 +82,9 @@ def propagate_tle(record: TLERecord, time_utc: datetime, *, max_age_days: float 
         from sgp4.api import Satrec, jday
     except ImportError as exc:
         raise RuntimeError("SGP4 backend needs the optional dependency: pip install 'orbitlink[full]'") from exc
-    if hasattr(record, "fields"):
-        from sgp4 import omm
-        satellite = Satrec()
-        omm.initialize(satellite, record.fields)
-    else:
-        satellite = Satrec.twoline2rv(record.line1, record.line2)
+    import json
+    satellite = _initialized_satellite(getattr(record, "line1", ""), getattr(record, "line2", ""),
+        json.dumps(record.fields, sort_keys=True) if hasattr(record, "fields") else "")
     jd, fr = jday(time_utc.year, time_utc.month, time_utc.day, time_utc.hour,
                   time_utc.minute, time_utc.second + time_utc.microsecond / 1e6)
     error, position_km, velocity_km_s = satellite.sgp4(jd, fr)

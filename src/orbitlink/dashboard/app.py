@@ -36,6 +36,14 @@ from orbitlink.orbit.tle import parse_tle_catalog
 def cached_catalog(group):
     return load_catalog(group)
 
+@st.cache_data(ttl=3600, max_entries=3, show_spinner=False)
+def cached_parse_catalog(text):
+    return parse_catalog(text)
+
+@st.cache_data(ttl=1800, max_entries=3, show_spinner=False)
+def cached_tle_simulation(records, **kwargs):
+    return run_tle_simulation(records, **kwargs)
+
 st.set_page_config(page_title="ORBITLINK | LEO Simulator", page_icon="🛰️", layout="wide")
 st.title("🛰️ ORBITLINK")
 st.caption("Explore how satellites connect a location on Earth to the internet.")
@@ -85,13 +93,13 @@ with st.sidebar:
         else:
             load_clicked = False
             catalog_source = st.selectbox("Catalog", ["Iridium NEXT", "Starlink", "Upload a file"])
-            subset_limit = st.slider("Satellites in detailed simulation", 10, 100, 60, 10)
+            subset_limit = st.slider("Satellites in detailed simulation", 10, 500, 150, 10)
             st.caption("Current orbital estimates, not live telemetry. Detailed simulation uses the freshest selected subset; links are hypothetical geometry, not the operator’s actual network.")
             if catalog_source == "Upload a file":
                 uploaded_catalog = st.file_uploader("Upload orbital data", type=["json", "tle", "txt"])
             else:
                 load_clicked = st.button("Load catalog and run")
-                if load_clicked:
+                if load_clicked or ("catalog_" + catalog_source) not in st.session_state:
                     try:
                         with st.spinner("Fetching orbital data…"):
                             st.session_state['catalog_' + catalog_source] = cached_catalog(catalog_source)
@@ -126,7 +134,7 @@ requested_config = {
 }
 if model_mode == "TLE catalog + SGP4" and uploaded_catalog is not None:
     try:
-        tle_records = parse_catalog(uploaded_catalog.getvalue().decode("utf-8-sig"))
+        tle_records = cached_parse_catalog(uploaded_catalog.getvalue().decode("utf-8-sig"))
         total_records = len(tle_records)
         tle_records = tuple(sorted(tle_records, key=lambda r: r.epoch, reverse=True)[:subset_limit])
         st.sidebar.caption(f"Simulating {len(tle_records)} of {total_records} catalog entries (freshest epochs).")
@@ -143,7 +151,7 @@ if model_mode == "TLE catalog + SGP4":
     if tle_error:
         st.error(f"TLE input error: {tle_error}")
     elif uploaded_catalog is None:
-        st.info("Click Load current catalog in the sidebar, or choose Upload a file.")
+        st.info("Choose a catalog in the sidebar, or upload a file.")
     elif tle_issues:
         st.warning("TLE quality check found issues. Adjust the UTC start time or upload fresher element sets. "
                    + " · ".join(f"{name}: {issue}" for name, issue in tle_issues[:5]))
@@ -154,9 +162,9 @@ if "result" not in st.session_state or run or (model_mode != "Synthetic demo" an
         with st.spinner("Propagating orbits and measuring links…"):
             if model_mode == "TLE catalog + SGP4":
                 if not tle_records or tle_issues or tle_error:
-                    st.error("Resolve the TLE catalog quality checks before running the simulation.")
+                    st.error("No usable orbital data loaded. Check the catalog message above or select Iridium NEXT.")
                     st.stop()
-                st.session_state.result = run_tle_simulation(
+                st.session_state.result = cached_tle_simulation(
                     tle_records, site=site, start_time_utc=simulation_start,
                     duration_seconds=int(duration_hours * 3600), timestep_seconds=timestep,
                     minimum_elevation_deg=min_elevation, max_age_days=max_tle_age)
@@ -280,11 +288,13 @@ with orbit_tab:
                 mode="lines", line={"color": "#7cff52", "width": 2}, opacity=0.48,
                 hoverinfo="skip", showlegend=False, name=f"{satellite_id} sampled path"))
 
+    if len(states) > 100:
+        st.caption("Large-constellation mode: all selected satellites move; pairwise optical links are omitted to keep playback responsive. Network routes use ground links only.")
     # Draw only links the geometry model says have line of sight and fit its
     # 5,000 km optical link range, matching the network view's link assumptions.
     crosslink_x, crosslink_y, crosslink_z = [], [], []
     for left_index, left in enumerate(states):
-        for right in states[left_index + 1:]:
+        for right in states[left_index + 1:] if len(states) <= 100 else []:
             link = optical_link(left.position_ecef_m, right.position_ecef_m, maximum_range_m=5_000_000)
             if link.available:
                 crosslink_x.extend([left.position_ecef_m[0] / 1000, right.position_ecef_m[0] / 1000, None])
@@ -333,11 +343,11 @@ with orbit_tab:
     satellite_trace = next(i for i, trace in enumerate(fig.data) if trace.name == "Satellites")
     crosslink_trace = next(i for i, trace in enumerate(fig.data) if trace.name == "Optical crosslinks")
     frames = []
-    for frame_index in range(0, len(result.times_seconds), max(1, len(result.times_seconds) // 60)):
+    for frame_index in range(0, len(result.times_seconds), max(1, len(result.times_seconds) // 30)):
         snapshot = result.satellite_states[frame_index]
         cx, cy, cz = [], [], []
         for left_i, left in enumerate(snapshot):
-            for right in snapshot[left_i + 1:]:
+            for right in snapshot[left_i + 1:] if len(snapshot) <= 100 else []:
                 if optical_link(left.position_ecef_m, right.position_ecef_m, maximum_range_m=5_000_000).available:
                     for axis, values in enumerate((cx, cy, cz)):
                         values.extend([left.position_ecef_m[axis] / 1000, right.position_ecef_m[axis] / 1000, None])
@@ -427,7 +437,7 @@ with network_tab:
         graph.add_edge(LinkEdge("gateway", view.satellite_id, distance / SPEED_OF_LIGHT_M_S,
             distance, capacity_bps=capacity_bps, link_type="rf"))
     for left in states:
-        for right in states:
+        for right in (states if len(states) <= 100 else []):
             if left.satellite_id >= right.satellite_id:
                 continue
             optical = optical_link(left.position_ecef_m, right.position_ecef_m, maximum_range_m=5_000_000)
