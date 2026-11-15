@@ -235,30 +235,8 @@ with orbit_tab:
         earth_colors.append([texture.getpixel(((j + v // 2) % v, min(u - 1, u - i))) for j in range(v + 1)])
     fig = go.Figure(go.Surface(x=sphere_x, y=sphere_y, z=sphere_z, surfacecolor=earth_colors,
                                cmin=0, cmax=255, colorscale=earth_scale, showscale=False,
-                               lighting={"ambient": 0.38, "diffuse": 0.92, "specular": 0.12, "roughness": 0.82},
+                               lighting={"ambient": 0.75, "diffuse": 0.65, "specular": 0.12, "roughness": 0.82},
                                lightposition={"x": 1200, "y": 900, "z": 1400}, name="Earth"))
-    # A fixed star field gives the globe the deep-space setting from the reference.
-    star_rng = random.Random(42)
-    star_positions = [[], [], []]
-    for _ in range(650):
-        z_unit = star_rng.uniform(-1, 1)
-        angle = star_rng.uniform(0, 2 * math.pi)
-        radius = 12_500
-        planar = math.sqrt(1 - z_unit * z_unit)
-        star_positions[0].append(radius * planar * math.cos(angle))
-        star_positions[1].append(radius * planar * math.sin(angle))
-        star_positions[2].append(radius * z_unit)
-    fig.add_trace(go.Scatter3d(x=star_positions[0], y=star_positions[1], z=star_positions[2],
-        mode="markers", marker={"size": 1.3, "color": "#b8c7d9", "opacity": 0.72},
-        hoverinfo="skip", showlegend=False, name="Stars"))
-    # Soft atmospheric rim around the planet.
-    atmosphere_radius = EARTH_RADIUS_M * 1.012 / 1000
-    atmosphere_x = [[atmosphere_radius * math.cos(math.pi * (i / u - 0.5)) * math.cos(2 * math.pi * j / v) for j in range(v + 1)] for i in range(u + 1)]
-    atmosphere_y = [[atmosphere_radius * math.cos(math.pi * (i / u - 0.5)) * math.sin(2 * math.pi * j / v) for j in range(v + 1)] for i in range(u + 1)]
-    atmosphere_z = [[atmosphere_radius * math.sin(math.pi * (i / u - 0.5)) for _ in range(v + 1)] for i in range(u + 1)]
-    fig.add_trace(go.Surface(x=atmosphere_x, y=atmosphere_y, z=atmosphere_z,
-        colorscale=[[0, "#3b9dff"], [1, "#8fcaff"]], showscale=False, opacity=0.10,
-        hoverinfo="skip", name="Atmosphere"))
     # Draw each complete orbital plane at the selected simulation instant. The
     # earlier trail used only the finite run window in rotating ECEF coordinates,
     # so its ends could not meet. Build a full inertial revolution, then rotate
@@ -319,7 +297,7 @@ with orbit_tab:
     # Satellite markers stay bright and identifiable against the space backdrop.
     fig.add_trace(go.Scatter3d(x=[s.position_ecef_m[0]/1000 for s in states],
         y=[s.position_ecef_m[1]/1000 for s in states], z=[s.position_ecef_m[2]/1000 for s in states],
-        mode="markers+text", marker={"size": 4.5, "color": "#e5eaf0", "line": {"color": "#89ff43", "width": 1}},
+        mode="markers", marker={"size": 3, "color": "#64d8ff", "line": {"color": "#89ff43", "width": 1}},
         text=[s.satellite_id for s in states], textposition="top center",
         textfont={"size": 8, "color": "#a5ff43"}, customdata=[s.satellite_id for s in states],
         hovertemplate="%{customdata}<extra>Satellite</extra>", name="Satellites"))
@@ -338,17 +316,17 @@ with orbit_tab:
     m4.metric("Simulation time", simulation_label)
     fig.update_layout(
         uirevision="earth-camera", dragmode="orbit",
-        height=720, margin={"l": 0, "r": 0, "t": 0, "b": 0},
+        height=650, margin={"l": 0, "r": 0, "t": 0, "b": 0},
         paper_bgcolor="#03070d", plot_bgcolor="#03070d",
         scene={
             "uirevision": "earth-camera",
             "dragmode": "orbit",
             "aspectmode": "cube",
             "bgcolor": "#03070d",
-            "xaxis": {"visible": False, "range": [-12_500, 12_500]},
-            "yaxis": {"visible": False, "range": [-12_500, 12_500]},
-            "zaxis": {"visible": False, "range": [-12_500, 12_500]},
-            "camera": {"eye": {"x": 1.65, "y": 1.65, "z": 1.1}, "projection": {"type": "orthographic"}},
+            "xaxis": {"visible": False, "range": [-8_800, 8_800]},
+            "yaxis": {"visible": False, "range": [-8_800, 8_800]},
+            "zaxis": {"visible": False, "range": [-8_800, 8_800]},
+            "camera": {"eye": {"x": 1.25, "y": 1.25, "z": 0.8}, "projection": {"type": "orthographic"}},
         },
         showlegend=False,
     )
@@ -367,11 +345,22 @@ with orbit_tab:
             go.Scatter3d(x=[x.position_ecef_m[0]/1000 for x in snapshot], y=[x.position_ecef_m[1]/1000 for x in snapshot], z=[x.position_ecef_m[2]/1000 for x in snapshot], text=[x.satellite_id for x in snapshot]),
             go.Scatter3d(x=cx, y=cy, z=cz)], layout={"title": f"Elapsed: {result.times_seconds[frame_index]/60:g} minutes"}))
     fig.frames = frames
-    fig.update_layout(updatemenus=[{"type": "buttons", "buttons": [
-        {"label": "▶ Play orbit simulation", "method": "animate", "args": [None, {"frame": {"duration": 300, "redraw": False}, "transition": {"duration": 0}, "fromcurrent": True}]},
-        {"label": "Pause", "method": "animate", "args": [[None], {"mode": "immediate", "frame": {"duration": 0, "redraw": False}}]}]}])
-    st.caption("Playback shows calculated satellite positions and changing links. Orbit curves mark the selected starting instant. Earth imagery: Three.js Earth texture; this is a fixed image, not live weather.")
-    st.plotly_chart(fig, use_container_width=True, key="earth_view", config={"scrollZoom": True})
+    # Keep playback controls outside the WebGL canvas.
+    import json
+    import streamlit.components.v1 as components
+    from plotly.utils import PlotlyJSONEncoder
+    payload = json.dumps(fig.to_plotly_json(), cls=PlotlyJSONEncoder).replace("</", "<\/")
+    viewer = """<html><head><style>body{margin:0;background:transparent;font:15px system-ui;color:#dce7f4}#globe{height:650px;background:#03070d;border-radius:12px}.controls{display:flex;align-items:center;gap:12px;padding:14px 4px}button{background:#183d58;color:white;border:1px solid #4b7796;border-radius:8px;padding:10px 22px;cursor:pointer}</style></head><body>
+    <div id="globe"></div><div class="controls"><button id="play">▶ Play</button><button id="pause">Pause</button><span id="status">Drag to rotate · scroll to zoom</span></div>
+    <script src="https://cdn.plot.ly/plotly-3.1.0.min.js"></script><script>
+    const figure=PAYLOAD;const graph=document.getElementById('globe');
+    Plotly.newPlot(graph,figure.data,figure.layout,{responsive:true,scrollZoom:true,displaylogo:false}).then(()=>{
+      Plotly.addFrames(graph,figure.frames);
+      document.getElementById('play').onclick=()=>Plotly.animate(graph,null,{frame:{duration:300,redraw:false},transition:{duration:0},fromcurrent:true});
+      document.getElementById('pause').onclick=()=>Plotly.animate(graph,[null],{mode:'immediate',frame:{duration:0,redraw:false}});
+    });</script></body></html>""".replace("PAYLOAD", payload)
+    components.html(viewer, height=730, scrolling=False)
+    st.caption("Earth photographic texture with calculated satellite positions. Hover over a satellite for its ID. Playback controls are below the viewer.")
     if result.model_name == "Synthetic secular J2":
         st.caption("J2 paths show calculated samples over this run. Earth’s shape slowly shifts the orbit; these paths are not forced into closed circles. Drag and short-period variations are excluded.")
     if result.model_name == "TLE + SGP4":
