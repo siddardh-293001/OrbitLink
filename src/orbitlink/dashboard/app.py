@@ -13,6 +13,8 @@ from pathlib import Path
 from PIL import Image
 from datetime import datetime, timedelta, timezone
 
+# Initialize pandas eagerly before Plotly/Streamlit inspect optional modules.
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
