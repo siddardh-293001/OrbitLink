@@ -23,8 +23,22 @@ def scenario(group, count, lat, lon, minute):
         records = records[:count]
     if not records:
         raise ValueError('No fresh orbital records. Update the saved catalog.')
+    from orbitlink.orbit.sgp4_backend import propagate_tle
+    from datetime import timedelta
+    valid, excluded = [], []
+    step = 300 if count == 0 else 60
+    for record in records:
+        try:
+            for seconds in range(0, 1801, step):
+                propagate_tle(record, now + timedelta(seconds=seconds))
+            valid.append(record)
+        except ValueError as exc:
+            excluded.append({'id':record.satellite_id,'name':record.name,'reason':str(exc)})
+    records = valid
+    if not records:
+        raise ValueError('No satellites can be propagated over this run. Update the catalog.')
     result = run_tle_simulation(records,start_time_utc=now,site=GroundSite('Terminal',lat,lon),duration_seconds=1800,timestep_seconds=300 if count == 0 else 60)
-    return dict(source=source,retrieved=retrieved,start=now.isoformat(),total=len(all_records),names={r.satellite_id:r.name for r in records},summary=result.summary(),frames=[dict(time=t,visible=v,serving=serving,delay=delay,snr=snr,satellites=[dict(id=s.satellite_id,xyz=[x/1000 for x in s.position_ecef_m],altitude=(sum(x*x for x in s.position_ecef_m)**.5-EARTH_RADIUS_M)/1000,speed=sum(x*x for x in s.velocity_teme_m_s)**.5/1000) for s in states]) for t,v,serving,delay,snr,states in zip(result.times_seconds,result.visible_counts,result.serving_satellite_ids,result.serving_delays_ms,result.serving_snr_db,result.satellite_states)],events=[dict(time=e.time_seconds,previous=e.previous_satellite_id,next=e.next_satellite_id,reason=e.reason) for e in result.handovers])
+    return dict(excluded=excluded,source=source,retrieved=retrieved,start=now.isoformat(),total=len(all_records),names={r.satellite_id:r.name for r in records},summary=result.summary(),frames=[dict(time=t,visible=v,serving=serving,delay=delay,snr=snr,satellites=[dict(id=s.satellite_id,xyz=[x/1000 for x in s.position_ecef_m],altitude=(sum(x*x for x in s.position_ecef_m)**.5-EARTH_RADIUS_M)/1000,speed=sum(x*x for x in s.velocity_teme_m_s)**.5/1000) for s in states]) for t,v,serving,delay,snr,states in zip(result.times_seconds,result.visible_counts,result.serving_satellite_ids,result.serving_delays_ms,result.serving_snr_db,result.satellite_states)],events=[dict(time=e.time_seconds,previous=e.previous_satellite_id,next=e.next_satellite_id,reason=e.reason) for e in result.handovers])
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self,*args,**kwargs):
