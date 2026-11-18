@@ -16,7 +16,7 @@ from orbitlink.core.constants import EARTH_RADIUS_M
 ROOT = Path(__file__).resolve().parents[3]
 
 @lru_cache(maxsize=6)
-def scenario(group, count, lat, lon, minute):
+def scenario(group, count, lat, lon, minute, interval=None):
     body, retrieved, source = load_catalog(group)
     now = datetime.fromtimestamp(minute*60, timezone.utc)
     all_records = parse_catalog(body.decode())
@@ -28,7 +28,7 @@ def scenario(group, count, lat, lon, minute):
     from orbitlink.orbit.sgp4_backend import propagate_tle
     from datetime import timedelta
     valid, excluded = [], []
-    step = 300 if count == 0 else 60
+    step = interval or (300 if count == 0 else 60)
     for record in records:
         try:
             for seconds in range(0, 1801, step):
@@ -39,7 +39,7 @@ def scenario(group, count, lat, lon, minute):
     records = valid
     if not records:
         raise ValueError('No satellites can be propagated over this run. Update the catalog.')
-    result = run_tle_simulation(records,start_time_utc=now,site=GroundSite('Terminal',lat,lon),duration_seconds=1800,timestep_seconds=300 if count == 0 else 60)
+    result = run_tle_simulation(records,start_time_utc=now,site=GroundSite('Terminal',lat,lon),duration_seconds=1800,timestep_seconds=step)
     return dict(excluded=excluded,source=source,retrieved=retrieved,start=now.isoformat(),total=len(all_records),names={r.satellite_id:r.name for r in records},summary=result.summary(),frames=[dict(time=t,visible=v,serving=serving,delay=delay,snr=snr,satellites=[dict(id=s.satellite_id,xyz=[x/1000 for x in s.position_ecef_m],altitude=(sum(x*x for x in s.position_ecef_m)**.5-EARTH_RADIUS_M)/1000,speed=sum(x*x for x in s.velocity_teme_m_s)**.5/1000) for s in states]) for t,v,serving,delay,snr,states in zip(result.times_seconds,result.visible_counts,result.serving_satellite_ids,result.serving_delays_ms,result.serving_snr_db,result.satellite_states)],events=[dict(time=e.time_seconds,previous=e.previous_satellite_id,next=e.next_satellite_id,reason=e.reason) for e in result.handovers])
 
 class Handler(SimpleHTTPRequestHandler):
@@ -67,7 +67,9 @@ class Handler(SimpleHTTPRequestHandler):
                 lat=float(data['lat']);lon=float(data['lon']);GroundSite('Reference',lat,lon)
                 group=data.get('group','Iridium NEXT')
                 if group not in ('Starlink','Iridium NEXT'):raise ValueError('Unknown catalog')
-                orbit=scenario(group,0,lat,lon,int(datetime.now(timezone.utc).timestamp()//60))
+                interval=int(data.get('interval',60))
+                if interval not in (30,60,300):raise ValueError('Sample interval must be 30, 60 or 300 seconds')
+                orbit=scenario(group,0,lat,lon,int(datetime.now(timezone.utc).timestamp()//60),interval)
                 report=compare_sites(orbit['frames'],data['sites']);report.update(retrieved=orbit['retrieved'],start=orbit['start'],satellites=len(orbit['frames'][0]['satellites']),sample_interval_seconds=orbit['frames'][1]['time'])
                 self.respond(report);return
             demo=self.demo()

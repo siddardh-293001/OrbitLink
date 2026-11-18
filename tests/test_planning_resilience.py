@@ -12,6 +12,12 @@ class PlanningTests(unittest.TestCase):
         self.assertEqual(report['sites'][0]['sampled_visibility_percent'],100)
         self.assertEqual(report['sites'][1]['sampled_visibility_percent'],0)
         self.assertEqual(report['sites'][1]['longest_sampled_gap_s'],120)
+    def test_identical_sites_report_tie(self):
+        frames=[dict(time=0,satellites=[]),dict(time=60,satellites=[])]
+        report=compare_sites(frames,[dict(name=n,lat=0,lon=0,mask=[0]*8) for n in ('A','B')])
+        self.assertEqual(report['tied_sites'],['A','B'])
+        self.assertTrue(report['recommended'].startswith('Tie:'))
+
     def test_invalid_mask_rejected(self):
         with self.assertRaises(ValueError):
             compare_sites([dict(time=0,satellites=[])],[dict(name='bad',lat=0,lon=0,mask=[float('nan')]*8)])

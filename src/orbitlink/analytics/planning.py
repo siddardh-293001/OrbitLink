@@ -25,4 +25,6 @@ def compare_sites(frames, sites, minimum_elevation=25):
         if start is not None:gaps.append({'start_s':start,'end_s':frames[-1]['time']})
         results.append(dict(name=site.name,lat=site.latitude_deg,lon=site.longitude_deg,mask=mask,counts=counts,sampled_visibility_percent=100*sum(n>0 for n in counts)/len(counts),mean_visible=sum(counts)/len(counts),longest_sampled_gap_s=max((g['end_s']-g['start_s'] for g in gaps),default=0),gaps=gaps))
     results.sort(key=lambda r:(-r['sampled_visibility_percent'],r['longest_sampled_gap_s'],-r['mean_visible']))
-    return dict(sites=results,recommended=results[0]['name'],assumptions='Eight 45-degree sky sectors: N, NE, E, SE, S, SW, W, NW. Mask values are user-supplied obstacle elevations. Ranking uses sampled visibility, gap length, then mean satellite count; it is not a prediction of operator service or throughput. Gaps are quantized to the sample interval.')
+    best=results[0]
+    ties=[r['name'] for r in results if (r['sampled_visibility_percent'],r['longest_sampled_gap_s'],r['mean_visible'])==(best['sampled_visibility_percent'],best['longest_sampled_gap_s'],best['mean_visible'])]
+    return dict(tied_sites=ties,sites=results,recommended='Tie: '+', '.join(ties) if len(ties)>1 else best['name'],assumptions='Eight 45-degree sky sectors: N, NE, E, SE, S, SW, W, NW. Mask values are user-supplied obstacle elevations. Ranking uses sampled visibility, gap length, then mean satellite count; it is not a prediction of operator service or throughput. Gaps are quantized to the sample interval.')
