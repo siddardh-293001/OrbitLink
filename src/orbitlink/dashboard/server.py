@@ -61,7 +61,16 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             size=int(self.headers.get('Content-Length','0'))
             if not 0<size<=2048:raise ValueError('Invalid request size')
-            data=json.loads(self.rfile.read(size));demo=self.demo()
+            data=json.loads(self.rfile.read(size))
+            if self.path=='/api/planning':
+                from orbitlink.analytics.planning import compare_sites
+                lat=float(data['lat']);lon=float(data['lon']);GroundSite('Reference',lat,lon)
+                group=data.get('group','Iridium NEXT')
+                if group not in ('Starlink','Iridium NEXT'):raise ValueError('Unknown catalog')
+                orbit=scenario(group,0,lat,lon,int(datetime.now(timezone.utc).timestamp()//60))
+                report=compare_sites(orbit['frames'],data['sites']);report.update(retrieved=orbit['retrieved'],start=orbit['start'],satellites=len(orbit['frames'][0]['satellites']),sample_interval_seconds=orbit['frames'][1]['time'])
+                self.respond(report);return
+            demo=self.demo()
             if self.path=='/api/resilience/send':result=demo.send(data.get('body'))
             elif self.path=='/api/resilience/link':result=demo.link(data.get('online'))
             else:raise ValueError('Unknown action')
