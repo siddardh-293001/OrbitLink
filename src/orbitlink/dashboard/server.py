@@ -75,7 +75,7 @@ class Handler(SimpleHTTPRequestHandler):
             elif self.path=='/api/resilience/link':result=demo.link(data.get('online'))
             else:raise ValueError('Unknown action')
             self.respond(result)
-        except (ValueError,TypeError) as exc:self.respond({'error':str(exc)},400)
+        except (ValueError,TypeError,KeyError) as exc:self.respond({'error':str(exc)},400)
 
     def __init__(self,*args,**kwargs):
         super().__init__(*args,directory=str(ROOT/'frontend'),**kwargs)
