@@ -1,8 +1,8 @@
 import {Planning} from './planning.js';
 import {Resilience} from './resilience.js';
 import {Journey} from './journey.js';
-import * as THREE from 'https://esm.sh/three@0.170.0';
-import {OrbitControls} from 'https://esm.sh/three@0.170.0/examples/jsm/controls/OrbitControls.js';
+import * as THREE from './vendor/three.js';
+import {OrbitControls} from './vendor/OrbitControls.js';
 const h=React.createElement,{useState,useEffect,useRef}=React;
 function Globe({frame,selected,onSelect,frames,showTrajectories}) {
  const node=useRef(null),sceneRef=useRef(null),latest=useRef({frame,selected,onSelect});latest.current={frame,selected,onSelect};
