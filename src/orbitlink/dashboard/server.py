@@ -70,6 +70,9 @@ class Handler(SimpleHTTPRequestHandler):
             size=int(self.headers.get('Content-Length','0'))
             if not 0<size<=2048:raise ValueError('Invalid request size')
             data=json.loads(self.rfile.read(size))
+            if self.path=='/api/benchmark':
+                from orbitlink.analytics.benchmark import benchmark
+                self.respond(benchmark(data.get('seed',42),data.get('loss_percent',10),data.get('outage_start',10),data.get('outage_end',25)));return
             if self.path=='/api/planning':
                 from orbitlink.analytics.planning import compare_sites
                 lat=float(data['lat']);lon=float(data['lon']);GroundSite('Reference',lat,lon)
