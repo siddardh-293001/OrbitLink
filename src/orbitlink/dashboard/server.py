@@ -83,6 +83,7 @@ class Handler(SimpleHTTPRequestHandler):
             demo=self.demo()
             if self.path=='/api/resilience/send':result=demo.send(data.get('body'))
             elif self.path=='/api/resilience/link':result=demo.link(data.get('online'))
+            elif self.path=='/api/resilience/configure':result=demo.configure(data.get('delay_ms',0),data.get('jitter_ms',0),data.get('loss_percent',0))
             else:raise ValueError('Unknown action')
             self.respond(result)
         except (ValueError,TypeError,KeyError) as exc:self.respond({'error':str(exc)},400)

@@ -6,11 +6,14 @@ from urllib.request import Request,urlopen
 import time
 import uuid
 import threading
+import random
+import math
 from pathlib import Path
 
 class ResilienceDemo:
     def __init__(self, path):
         self.path=str(path);self.lock=threading.RLock();self.online=True
+        self.delay_ms=0;self.jitter_ms=0;self.loss_percent=0
         with self.connect() as db:
             db.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value INTEGER)')
             row=db.execute("SELECT value FROM settings WHERE key='online'").fetchone()
@@ -18,7 +21,19 @@ class ResilienceDemo:
             db.execute('CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, body TEXT, created REAL, delivered REAL, direct_delivered INTEGER)')
     def connect(self):
         return sqlite3.connect(self.path,timeout=10)
+    def configure(self, delay_ms=0, jitter_ms=0, loss_percent=0):
+        values=[float(delay_ms),float(jitter_ms),float(loss_percent)]
+        if any(not math.isfinite(x) for x in values) or not 0<=values[0]<=2000 or not 0<=values[1]<=1000 or not 0<=values[2]<=100:
+            raise ValueError('Delay 0–2000 ms, jitter 0–1000 ms, loss 0–100% required')
+        with self.lock:
+            self.delay_ms,self.jitter_ms,self.loss_percent=values
+        return self.status()
     def deliver(self, identity, body):
+        # Independent Bernoulli loss per attempt; jitter is uniform, clipped at zero.
+        if random.random()*100 < self.loss_percent:return False
+        delay=max(0,self.delay_ms+random.uniform(-self.jitter_ms,self.jitter_ms))
+        if delay:time.sleep(delay/1000)
+
         url=os.environ.get('ORBITLINK_RECEIVER_URL')
         if not url:return True
         try:
@@ -40,11 +55,11 @@ class ResilienceDemo:
             self.online=online
             db.execute("INSERT OR REPLACE INTO settings VALUES (?,?)",('online',int(online)))
             if online:
-                for identity,body in db.execute('SELECT id,body FROM messages WHERE delivered IS NULL').fetchall():
+                for identity,body in db.execute('SELECT id,body FROM messages WHERE delivered IS NULL ORDER BY created LIMIT 5').fetchall():
                     if self.deliver(identity,body):db.execute('UPDATE messages SET delivered=? WHERE id=?',(time.time(),identity))
         return self.status()
     def status(self):
         with self.lock,self.connect() as db:
             rows=db.execute('SELECT id,body,created,delivered,direct_delivered FROM messages ORDER BY created').fetchall()
         messages=[dict(id=r[0],body=r[1],created=r[2],delivered=r[3],direct_delivered=bool(r[4]),delay_seconds=None if r[3] is None else r[3]-r[2]) for r in rows]
-        return dict(online=self.online,generated=len(rows),queued=sum(r[3] is None for r in rows),delivered=sum(r[3] is not None for r in rows),direct_delivered=sum(r[4] for r in rows),messages=messages,mode='Acknowledged HTTP receiver' if os.environ.get('ORBITLINK_RECEIVER_URL') else 'Controlled local delivery demonstration')
+        return dict(emulation=dict(delay_ms=self.delay_ms,jitter_ms=self.jitter_ms,loss_percent=self.loss_percent),online=self.online,generated=len(rows),queued=sum(r[3] is None for r in rows),delivered=sum(r[3] is not None for r in rows),direct_delivered=sum(r[4] for r in rows),messages=messages,mode='Acknowledged HTTP receiver' if os.environ.get('ORBITLINK_RECEIVER_URL') else 'Controlled local delivery demonstration')
