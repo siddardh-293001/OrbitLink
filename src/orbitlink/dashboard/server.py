@@ -118,4 +118,13 @@ if __name__=='__main__':
     from orbitlink.orbit.catalog import start_catalog_refresh
     Path(os.environ.get('ORBITLINK_DATA_DIR',tempfile.gettempdir())).mkdir(parents=True,exist_ok=True)
     start_catalog_refresh()
+    import threading,time
+    def retry_worker():
+        while True:
+            time.sleep(10)
+            for demo in list(Handler.demos.values()):
+                try:
+                    if demo.online:demo.link(True)
+                except Exception:pass
+    threading.Thread(target=retry_worker,daemon=True,name='delivery-retry').start()
     ThreadingHTTPServer(('0.0.0.0',int(os.environ.get('PORT','8000'))),Handler).serve_forever()
