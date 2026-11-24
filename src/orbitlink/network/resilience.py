@@ -1,5 +1,6 @@
 """Persistent store-and-forward demonstration over a controlled local link."""
 import sqlite3
+from contextlib import contextmanager
 import os
 import json
 from urllib.request import Request,urlopen
@@ -21,8 +22,12 @@ class ResilienceDemo:
             row=db.execute("SELECT value FROM settings WHERE key='online'").fetchone()
             if row is not None:self.online=bool(row[0])
             db.execute('CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, body TEXT, created REAL, delivered REAL, direct_delivered INTEGER)')
+    @contextmanager
     def connect(self):
-        return sqlite3.connect(self.path,timeout=10)
+        db=sqlite3.connect(self.path,timeout=10)
+        try:
+            with db:yield db
+        finally:db.close()
     def configure(self, delay_ms=0, jitter_ms=0, loss_percent=0):
         values=[float(delay_ms),float(jitter_ms),float(loss_percent)]
         if any(not math.isfinite(x) for x in values) or not 0<=values[0]<=2000 or not 0<=values[1]<=1000 or not 0<=values[2]<=100:

@@ -1,5 +1,6 @@
 """Independent acknowledged message receiver. Run with python -m orbitlink.network.receiver."""
 import json
+from contextlib import closing
 import os
 import sqlite3
 import tempfile
@@ -9,10 +10,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 class ReceiverStore:
     def __init__(self,path):
         self.path=str(path)
-        with sqlite3.connect(self.path) as db:db.execute('CREATE TABLE IF NOT EXISTS received (id TEXT PRIMARY KEY, body TEXT)')
+        with closing(sqlite3.connect(self.path)) as db, db:db.execute('CREATE TABLE IF NOT EXISTS received (id TEXT PRIMARY KEY, body TEXT)')
     def accept(self,identity,body):
         if not isinstance(identity,str) or not 1<=len(identity)<=80 or not isinstance(body,str) or not 1<=len(body)<=500:raise ValueError('Invalid message')
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             previous=db.execute('SELECT body FROM received WHERE id=?',(identity,)).fetchone()
             if previous and previous[0]!=body:raise ValueError('Message ID conflicts with existing content')
             db.execute('INSERT OR IGNORE INTO received VALUES (?,?)',(identity,body))

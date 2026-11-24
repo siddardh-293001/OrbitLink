@@ -1,0 +1,26 @@
+name: Validate ORBITLINK
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install simulation test dependencies
+        run: pip install -e . sgp4
+      - name: Python regression tests
+        run: python -m unittest discover -s tests -v
+      - name: Frontend startup module check
+        run: node scripts/check-frontend.mjs
+      - name: Compile and whitespace
+        run: |
+          python -m compileall -q src tests
+          git diff --check
