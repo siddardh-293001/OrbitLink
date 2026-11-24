@@ -9,6 +9,9 @@ class ResilienceDemo:
     def __init__(self, path):
         self.path=str(path);self.lock=threading.RLock();self.online=True
         with self.connect() as db:
+            db.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value INTEGER)')
+            row=db.execute("SELECT value FROM settings WHERE key='online'").fetchone()
+            if row is not None:self.online=bool(row[0])
             db.execute('CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, body TEXT, created REAL, delivered REAL, direct_delivered INTEGER)')
     def connect(self):
         return sqlite3.connect(self.path,timeout=10)
@@ -22,6 +25,7 @@ class ResilienceDemo:
         if not isinstance(online,bool):raise ValueError('online must be boolean')
         with self.lock,self.connect() as db:
             self.online=online
+            db.execute("INSERT OR REPLACE INTO settings VALUES (?,?)",('online',int(online)))
             if online:db.execute('UPDATE messages SET delivered=? WHERE delivered IS NULL',(time.time(),))
         return self.status()
     def status(self):

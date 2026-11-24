@@ -54,7 +54,7 @@ class Handler(SimpleHTTPRequestHandler):
             raise ValueError('A valid demo session is required')
         if session not in self.demos:
             if len(self.demos)>=100:raise ValueError('Demo capacity reached')
-            self.demos[session]=ResilienceDemo(Path(tempfile.gettempdir()) / ('orbitlink-'+session+'.sqlite'))
+            self.demos[session]=ResilienceDemo(Path(os.environ.get('ORBITLINK_DATA_DIR',tempfile.gettempdir())) / ('orbitlink-'+session+'.sqlite'))
         return self.demos[session]
     def respond(self, value, status=200):
         body=json.dumps(value,separators=(',',':'),allow_nan=False).encode()
@@ -95,6 +95,9 @@ class Handler(SimpleHTTPRequestHandler):
             try:self.respond(self.demo().status())
             except ValueError as exc:self.respond({'error':str(exc)},400)
             return
+        if url.path=='/api/catalog-status':
+            from orbitlink.orbit.catalog import REFRESH_STATUS
+            self.respond({'refresh_interval_hours':6,'groups':dict(REFRESH_STATUS),'storage': 'configured directory' if os.environ.get('ORBITLINK_DATA_DIR') else 'ephemeral hosting storage'});return
         if url.path=='/health':
             self.send_response(200);self.end_headers();self.wfile.write(b'ok');return
         if url.path=='/earth.jpg':
@@ -112,4 +115,7 @@ class Handler(SimpleHTTPRequestHandler):
         super().do_GET()
 
 if __name__=='__main__':
+    from orbitlink.orbit.catalog import start_catalog_refresh
+    Path(os.environ.get('ORBITLINK_DATA_DIR',tempfile.gettempdir())).mkdir(parents=True,exist_ok=True)
+    start_catalog_refresh()
     ThreadingHTTPServer(('0.0.0.0',int(os.environ.get('PORT','8000'))),Handler).serve_forever()

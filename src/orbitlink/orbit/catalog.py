@@ -58,18 +58,50 @@ def fetch_catalog(group):
 
 
 def load_catalog(group):
-    """Try the network; on failure return a labeled, dated real-data snapshot."""
+    """Serve the latest validated snapshot, refreshing in the background."""
     from pathlib import Path
-    path = Path(__file__).parent / 'data' / (GROUPS[group] + '.json')
-    if path.exists():
-        snapshot = json.loads(path.read_text())
-        body = json.dumps(snapshot['records']).encode()
-        records = parse_catalog(body.decode())
-        now = datetime.now(timezone.utc)
-        if any(0 <= (now-r.epoch).total_seconds()/86400 <= 14 for r in records):
-            return body, snapshot['retrieved_at'], 'Saved real orbital catalog (dated snapshot)'
+    import os, tempfile
+    cache = Path(os.environ.get('ORBITLINK_DATA_DIR', tempfile.gettempdir())) / 'catalogs'
+    candidates=[cache / (GROUPS[group]+'.json'), Path(__file__).parent / 'data' / (GROUPS[group]+'.json')]
+    for path in candidates:
+        try:
+            snapshot=json.loads(path.read_text())
+            body=json.dumps(snapshot['records']).encode()
+            records=parse_catalog(body.decode())
+            now=datetime.now(timezone.utc)
+            if any(not r.quality(now) for r in records):
+                return body,snapshot['retrieved_at'],'Validated saved catalog · automatic refresh every 6 hours'
+        except (OSError,ValueError,KeyError,TypeError):
+            continue
+    raise RuntimeError('No usable saved orbital data. Automatic refresh is pending or failed; inspect catalog status.')
+
+
+REFRESH_STATUS = {}
+
+def refresh_catalog(group):
+    """Atomically replace a snapshot only after complete validation."""
+    from pathlib import Path
+    import os, tempfile
     try:
-        body, retrieved = fetch_catalog(group)
-        return body, retrieved, 'Downloaded from CelesTrak'
-    except (OSError, ValueError, KeyError, TypeError) as exc:
-        raise RuntimeError('Current feed unavailable. Select Iridium NEXT for the saved real-data demo, or upload a fresh catalog.') from exc
+        body,retrieved=fetch_catalog(group)
+        records=parse_catalog(body.decode('utf-8-sig'))
+        if not any(not r.quality(datetime.now(timezone.utc)) for r in records):
+            raise ValueError('Downloaded catalog has no fresh records')
+        cache=Path(os.environ.get('ORBITLINK_DATA_DIR',tempfile.gettempdir()))/'catalogs'
+        cache.mkdir(parents=True,exist_ok=True)
+        target=cache/(GROUPS[group]+'.json')
+        temporary=target.with_suffix('.tmp')
+        temporary.write_text(json.dumps(dict(retrieved_at=retrieved,records=json.loads(body))))
+        os.replace(temporary,target)
+        REFRESH_STATUS[group]=dict(ok=True,checked_at=retrieved,records=len(records))
+    except (OSError,ValueError,KeyError,TypeError) as exc:
+        REFRESH_STATUS[group]=dict(ok=False,checked_at=datetime.now(timezone.utc).isoformat(),error=str(exc))
+
+def start_catalog_refresh():
+    import threading
+    def worker():
+        import time
+        while True:
+            for group in GROUPS:refresh_catalog(group)
+            time.sleep(6*3600)
+    threading.Thread(target=worker,daemon=True,name='catalog-refresh').start()
