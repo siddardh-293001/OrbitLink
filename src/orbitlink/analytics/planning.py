@@ -5,6 +5,8 @@ from orbitlink.geometry.transforms import look_angle
 
 def compare_sites(frames, sites, minimum_elevation=25):
     if not frames or not 1 <= len(sites) <= 3:raise ValueError('Provide 1–3 sites and nonempty orbital samples')
+    names=[str(item.get('name','')).strip() for item in sites]
+    if any(not name for name in names) or len(set(names))!=len(names):raise ValueError('Each placement needs a unique nonempty name')
     results=[]
     for item in sites:
         site=GroundSite(str(item['name'])[:60],float(item['lat']),float(item['lon']))
