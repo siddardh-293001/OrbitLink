@@ -1,5 +1,6 @@
 """React mission control host; shares the existing Python simulation engine."""
 import json
+import gzip
 import os
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -56,7 +57,14 @@ class Handler(SimpleHTTPRequestHandler):
             self.demos[session]=ResilienceDemo(Path(tempfile.gettempdir()) / ('orbitlink-'+session+'.sqlite'))
         return self.demos[session]
     def respond(self, value, status=200):
-        body=json.dumps(value).encode();self.send_response(status);self.send_header('Content-Type','application/json');self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(body)
+        body=json.dumps(value,separators=(',',':'),allow_nan=False).encode()
+        compressed='gzip' in self.headers.get('Accept-Encoding','') and len(body)>1024
+        if compressed:body=gzip.compress(body,compresslevel=3)
+        self.send_response(status);self.send_header('Content-Type','application/json');self.send_header('Cache-Control','no-store');self.send_header('Vary','Accept-Encoding');self.send_header('Content-Length',str(len(body)))
+        if compressed:self.send_header('Content-Encoding','gzip')
+        self.end_headers()
+        try:self.wfile.write(body)
+        except (BrokenPipeError,ConnectionResetError):pass
     def do_POST(self):
         try:
             size=int(self.headers.get('Content-Length','0'))
@@ -100,7 +108,7 @@ class Handler(SimpleHTTPRequestHandler):
                 GroundSite('Terminal',lat,lon)
                 payload=scenario(group,count,lat,lon,int(datetime.now(timezone.utc).timestamp()//60));status=200
             except Exception as exc:payload={'error':str(exc)};status=400
-            body=json.dumps(payload).encode();self.send_response(status);self.send_header('Content-Type','application/json');self.end_headers();self.wfile.write(body);return
+            self.respond(payload,status);return
         super().do_GET()
 
 if __name__=='__main__':
