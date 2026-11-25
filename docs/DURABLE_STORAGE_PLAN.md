@@ -21,3 +21,14 @@ Local tests: 48 existing checks plus 3 opt-in hosted integration checks covering
 A deployed acceptance check must create an offline queued message, redeploy both services, confirm the same ID remains pending, restore the link, verify receipt and attempt evidence, then redeploy and verify acknowledgement history again. Record its outcome in release evidence.
 
 Previous ephemeral SQLite demonstration data is not automatically imported. No claim is made that records lost in earlier Render redeploys can be recovered. Browser-local planning surveys remain separate and device-local.
+
+## Verified release evidence — 25 November 2026
+
+- Implementation commit: 7e6e6bc. GitHub validation passed (run 45575299349).
+- Both services deployed, then both redeployed again with stored test records present.
+- After redeploy, the same offline session retained one acknowledged message, one queued message, stable IDs, offline state and 25 ms configured delay.
+- Restoring the link produced 2/2 delivered, zero queued and persisted attempt evidence. The receiver retained the receipt from before redeployment.
+- A separate online session with 100% emulated loss remained pending across restart. After changing its stored loss to zero, the restarted worker delivered it without any browser request for that session; one receiver receipt was verified directly in PostgreSQL.
+- An acknowledgement connection closed after a receipt committed. Retry recovered successfully without duplicating that receipt; the receiver now ignores expected disconnected-client writes.
+- Supabase security advisor returned no findings. The attempts foreign-key index was added; its initial unused-index informational notice is expected for a new small database.
+- All 48 existing tests and all 3 hosted integration checks passed. Frontend module validation passed. Visual browser interaction was not tested in this release.

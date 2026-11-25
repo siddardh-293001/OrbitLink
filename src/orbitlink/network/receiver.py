@@ -35,7 +35,11 @@ class ReceiverHandler(BaseHTTPRequestHandler):
             data=json.loads(self.rfile.read(size));result=self.store.accept(data['id'],data['body']);code=200
         except (ValueError,KeyError,TypeError) as exc:result={'error':str(exc)};code=400
         except StorageUnavailable as exc:result={'error':str(exc)};code=503
-        self.send_response(code);self.send_header('Content-Type','application/json');self.end_headers();self.wfile.write(json.dumps(result).encode())
+        self.send_response(code);self.send_header('Content-Type','application/json');self.end_headers()
+        try:self.wfile.write(json.dumps(result).encode())
+        except (BrokenPipeError,ConnectionResetError):
+            # A timed-out sender can retry the committed receipt idempotently.
+            pass
 
 if __name__=='__main__':
     directory=Path(os.environ.get('ORBITLINK_DATA_DIR',tempfile.gettempdir()));directory.mkdir(parents=True,exist_ok=True)
