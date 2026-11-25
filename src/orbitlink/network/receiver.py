@@ -3,6 +3,7 @@ import json
 from contextlib import closing
 import os
 import sqlite3
+from orbitlink.network.postgres import StorageUnavailable
 import tempfile
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -33,9 +34,13 @@ class ReceiverHandler(BaseHTTPRequestHandler):
             if self.path!='/messages' or not 0<size<=2048:raise ValueError('Invalid request')
             data=json.loads(self.rfile.read(size));result=self.store.accept(data['id'],data['body']);code=200
         except (ValueError,KeyError,TypeError) as exc:result={'error':str(exc)};code=400
+        except StorageUnavailable as exc:result={'error':str(exc)};code=503
         self.send_response(code);self.send_header('Content-Type','application/json');self.end_headers();self.wfile.write(json.dumps(result).encode())
 
 if __name__=='__main__':
     directory=Path(os.environ.get('ORBITLINK_DATA_DIR',tempfile.gettempdir()));directory.mkdir(parents=True,exist_ok=True)
-    ReceiverHandler.store=ReceiverStore(directory/'received.sqlite')
+    if os.environ.get('ORBITLINK_DATABASE_URL'):
+        from orbitlink.network.postgres import PostgresReceiver
+        ReceiverHandler.store=PostgresReceiver(os.environ['ORBITLINK_DATABASE_URL'])
+    else:ReceiverHandler.store=ReceiverStore(directory/'received.sqlite')
     ThreadingHTTPServer(('0.0.0.0',int(os.environ.get('PORT','8001'))),ReceiverHandler).serve_forever()

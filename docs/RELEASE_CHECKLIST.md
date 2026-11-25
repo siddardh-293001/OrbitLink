@@ -13,6 +13,6 @@ After deployment:
 1. Confirm Render reports the intended commit live.
 2. Request health, static entry assets and a small orbital scenario.
 3. Repeat an isolated receiver recovery test and a planner/benchmark API check when their paths changed.
-4. Record remaining limitations. Free hosting storage is ephemeral, and public orbital predictions do not prove operator service availability.
+4. Record remaining limitations. Local SQLite and catalog caches on free hosting are ephemeral; hosted PostgreSQL stores delivery data separately, and public orbital predictions do not prove operator service availability.
 
 The current Render deployment is manual. The workflow reports failures but does not itself prevent a manual deployment. Inspect it before publishing.

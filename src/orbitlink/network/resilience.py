@@ -79,6 +79,8 @@ class ResilienceDemo:
         with self.lock,self.connect() as db:
             rows=db.execute('SELECT id,body,created,delivered,direct_delivered FROM messages ORDER BY created').fetchall()
             attempts=db.execute('SELECT message_id,attempted,acknowledged,detail FROM attempts ORDER BY attempted').fetchall()
+        return self.format_status(rows,attempts)
+    def format_status(self, rows, attempts, storage='SQLite (local filesystem)'):
         evidence=[dict(message_id=a[0],attempted_at=a[1],acknowledged=bool(a[2]),detail=a[3]) for a in attempts]
         messages=[dict(attempt_count=sum(a[0]==r[0] for a in attempts),id=r[0],body=r[1],created=r[2],delivered=r[3],direct_delivered=bool(r[4]),delay_seconds=None if r[3] is None else r[3]-r[2]) for r in rows]
-        return dict(attempts=evidence,last_delivery_error=self.last_delivery_error,retry_interval_seconds=10,emulation=dict(delay_ms=self.delay_ms,jitter_ms=self.jitter_ms,loss_percent=self.loss_percent),online=self.online,generated=len(rows),queued=sum(r[3] is None for r in rows),delivered=sum(r[3] is not None for r in rows),direct_delivered=sum(r[4] for r in rows),messages=messages,mode='Acknowledged HTTP receiver' if os.environ.get('ORBITLINK_RECEIVER_URL') else 'Controlled local delivery demonstration')
+        return dict(storage=storage,attempts=evidence,last_delivery_error=self.last_delivery_error,retry_interval_seconds=10,emulation=dict(delay_ms=self.delay_ms,jitter_ms=self.jitter_ms,loss_percent=self.loss_percent),online=self.online,generated=len(rows),queued=sum(r[3] is None for r in rows),delivered=sum(r[3] is not None for r in rows),direct_delivered=sum(r[4] for r in rows),messages=messages,mode='Acknowledged HTTP receiver' if os.environ.get('ORBITLINK_RECEIVER_URL') else 'Controlled local delivery demonstration')

@@ -7,6 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 import tempfile
 from orbitlink.network.resilience import ResilienceDemo
+from orbitlink.network.postgres import StorageUnavailable
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 from orbitlink.orbit.catalog import load_catalog, parse_catalog
@@ -46,15 +47,18 @@ def scenario(group, count, lat, lon, minute, interval=None):
 class Handler(SimpleHTTPRequestHandler):
     demos = {}
     def demo(self):
-        # Browser sessions get independent queues; files survive process restarts
-        # on the same filesystem. Render free storage is ephemeral.
+        # Browser session IDs isolate queues; hosted PostgreSQL survives redeploys.
+        # Local development can use SQLite on the local filesystem.
         import re
         session = self.headers.get('X-Orbitlink-Session','')
         if not re.fullmatch(r'[a-f0-9-]{36}',session):
             raise ValueError('A valid demo session is required')
         if session not in self.demos:
             if len(self.demos)>=100:raise ValueError('Demo capacity reached')
-            self.demos[session]=ResilienceDemo(Path(os.environ.get('ORBITLINK_DATA_DIR',tempfile.gettempdir())) / ('orbitlink-'+session+'.sqlite'))
+            if os.environ.get('ORBITLINK_DATABASE_URL'):
+                from orbitlink.network.postgres import PostgresDemo
+                self.demos[session]=PostgresDemo(session,os.environ['ORBITLINK_DATABASE_URL'])
+            else:self.demos[session]=ResilienceDemo(Path(os.environ.get('ORBITLINK_DATA_DIR',tempfile.gettempdir())) / ('orbitlink-'+session+'.sqlite'))
         return self.demos[session]
     def respond(self, value, status=200):
         body=json.dumps(value,separators=(',',':'),allow_nan=False).encode()
@@ -90,6 +94,7 @@ class Handler(SimpleHTTPRequestHandler):
             else:raise ValueError('Unknown action')
             self.respond(result)
         except (ValueError,TypeError,KeyError) as exc:self.respond({'error':str(exc)},400)
+        except StorageUnavailable as exc:self.respond({'error':str(exc)},503)
 
     def __init__(self,*args,**kwargs):
         super().__init__(*args,directory=str(ROOT/'frontend'),**kwargs)
@@ -98,6 +103,7 @@ class Handler(SimpleHTTPRequestHandler):
         if url.path=='/api/resilience':
             try:self.respond(self.demo().status())
             except ValueError as exc:self.respond({'error':str(exc)},400)
+            except StorageUnavailable as exc:self.respond({'error':str(exc)},503)
             return
         if url.path=='/api/catalog-status':
             from orbitlink.orbit.catalog import REFRESH_STATUS
@@ -126,6 +132,15 @@ if __name__=='__main__':
     def retry_worker():
         while True:
             time.sleep(10)
+            if os.environ.get('ORBITLINK_DATABASE_URL'):
+                from orbitlink.network.postgres import PostgresDemo
+                try:
+                    for session in PostgresDemo.pending_sessions(os.environ['ORBITLINK_DATABASE_URL']):
+                        PostgresDemo(session,os.environ['ORBITLINK_DATABASE_URL']).retry()
+                except Exception:
+                    import logging
+                    logging.exception('Durable delivery retry failed')
+                continue
             for demo in list(Handler.demos.values()):
                 try:
                     if demo.online:demo.link(True)
